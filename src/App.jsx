@@ -1,353 +1,300 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ArrowDownRight,
-  BarChart3,
-  CheckCircle2,
-  ChevronDown,
-  Compass,
-  FileText,
-  Filter,
-  Globe2,
-  Info,
-  Layers,
-  Pickaxe,
-  RotateCcw,
-  Users,
-  Wheat,
-  X
+  ArrowLeft, ArrowRight, CalendarDays, Compass, FileText, Globe2, Layers, Mountain,
+  Pickaxe, TrendingUp, Users, Wheat, X
 } from 'lucide-react';
 import MapaJujuy from './MapaJujuy';
 import { JUJUY_DEPARTMENTS_DATA, PROVINCIAL_TOTALS } from './data';
 
-const FILTERS = [
-  { id: 'todos', label: 'Todos', count: '16', Icon: Layers, iconCls: 'text-cyan-300', on: 'filter-on-all' },
-  { id: 'mineril', label: 'Minería / litio', count: '5', Icon: Pickaxe, iconCls: 'text-violet-300', on: 'filter-on-mining' },
-  { id: 'agro', label: 'Agroindustria', count: '5', Icon: Wheat, iconCls: 'text-emerald-300', on: 'filter-on-agro' },
-  { id: 'turismo', label: 'Turismo', count: '4', Icon: Compass, iconCls: 'text-amber-300', on: 'filter-on-tourism' }
-];
+const SECTORS = {
+  mineril:   { label: 'Minería y litio',     color: '#a855f7' },
+  agro:      { label: 'Agroindustria',       color: '#10b981' },
+  turismo:   { label: 'Turismo y servicios', color: '#f59e0b' },
+  servicios: { label: 'Servicios',           color: '#0ea5e9' }
+};
+const SERIES = [['litio', 'Minería y litio', '#a855f7'], ['agro', 'Agroindustria', '#10b981'], ['turismo', 'Turismo y servicios', '#f59e0b']];
+const YEARS = [2015, 2018, 2021, 2024, 2026];
+const LATEST = 2026;
+const NA = 'No disponible';
+const fmt = (n) => Math.round(n).toLocaleString('es-AR');
+const glass = 'bg-[#07111d]/85 border border-white/12 backdrop-blur-md';
+const card = 'bg-[#0a1624] border border-white/10 rounded-xl';
 
-const TABS = [
-  { id: 'evolucion', label: 'Producción', Icon: BarChart3 },
-  { id: 'empleo', label: 'Empleo registrado', Icon: Users },
-  { id: 'comparacion', label: 'Departamentos', Icon: Layers }
-];
-
-const PRODUCTION_SERIES = [
-  ['litio', 'Litio y minería', 'bar-mining', 'tooltip-mining'],
-  ['agro', 'Agroindustria', 'bar-agro', 'tooltip-agro'],
-  ['turismo', 'Turismo y servicios', 'bar-tourism', 'tooltip-tourism']
-];
-const FILTER_TO_SERIES = { mineril: 'litio', agro: 'agro', turismo: 'turismo' };
-
-const chapterLinks = [
-  ['top', '01', 'La matriz'],
-  ['territorio', '02', 'Distribución territorial'],
-  ['evolucion', '03', 'Evolución económica'],
-  ['mineria', '04', 'Minería y litio'],
-  ['agroindustria', '05', 'Agroindustria'],
-  ['turismo-servicios', '06', 'Turismo y servicios'],
-  ['empleo-desarrollo', '07', 'Empleo y desarrollo'],
-  ['conclusiones', '08', 'Conclusiones']
-];
-
-function MetricCard({ label, value, tone = 'cyan' }) {
+function Donut({ parts }) {
+  const total = parts.reduce((t, p) => t + p.value, 0);
+  let acc = 0;
   return (
-    <div className={`editorial-metric tone-${tone}`}>
-      <span>{label}</span>
-      <strong>{value || '—'}</strong>
-    </div>
+    <svg viewBox="0 0 100 100" className="w-24 h-24 -rotate-90 shrink-0">
+      <circle cx="50" cy="50" r="38" fill="none" stroke="#12263a" strokeWidth="16" />
+      {total > 0 && parts.map((p) => {
+        const len = (p.value / total) * 238.76;
+        const el = <circle key={p.label} cx="50" cy="50" r="38" fill="none" stroke={p.color} strokeWidth="16"
+          strokeDasharray={`${len} ${238.76 - len}`} strokeDashoffset={-acc} />;
+        acc += len;
+        return el;
+      })}
+    </svg>
   );
 }
 
-const latestOf = (data) => data?.yearlyData?.[data.yearlyData.length - 1];
-const availableValue = (value, suffix = '') => value !== undefined && value !== null && value !== '' ? `${value}${suffix}` : 'No disponible';
-const percentageOf = (value, total) => total > 0 ? `${((value / total) * 100).toFixed(1)}%` : 'No disponible';
-
-const SECTOR_SECTIONS = [
-  {
-    id: 'mineria', number: 'A', title: 'Minería y litio', filterId: 'mineril', series: 'litio', tone: 'mining',
-    intro: 'Esta vista reúne la evolución de la serie de litio y minería y la distribución territorial de los departamentos identificados con ese eje productivo en la base actual.',
-    matches: (department) => department.sector === 'mineril', unit: 'k Tn'
-  },
-  {
-    id: 'agroindustria', number: 'B', title: 'Agroindustria', filterId: 'agro', series: 'agro', tone: 'agro',
-    intro: 'Esta vista permite seguir la serie de agroindustria y comparar los departamentos clasificados con ese eje productivo dentro de la matriz disponible.',
-    matches: (department) => department.sector === 'agro', unit: 'k Tn'
-  },
-  {
-    id: 'turismo-servicios', number: 'C', title: 'Turismo y servicios', filterId: 'turismo', series: 'turismo', tone: 'tourism',
-    intro: 'Esta vista reúne la serie de turismo y servicios y ordena los departamentos vinculados con turismo o servicios para facilitar su comparación territorial.',
-    matches: (department) => department.sector === 'turismo' || department.sector === 'servicios', unit: 'k Serv'
-  }
-];
-
-function SectorSection({ config, onExplore, onSelectDepartment }) {
-  const provinceSeries = PROVINCIAL_TOTALS.yearlyData;
-  const latestProvince = latestOf(PROVINCIAL_TOTALS)?.[config.series] ?? null;
-  const departments = JUJUY_DEPARTMENTS_DATA
-    .filter(config.matches)
-    .map((department) => ({ ...department, latest: latestOf(department)?.[config.series] ?? null }))
-    .filter((department) => department.latest !== null)
-    .sort((a, b) => b.latest - a.latest);
-  const maxHistory = Math.max(1, ...provinceSeries.map((year) => year[config.series] ?? 0));
-  const maxDepartment = Math.max(1, ...departments.map((department) => department.latest));
-  const totalLatest = latestOf(PROVINCIAL_TOTALS);
-  const allLatest = totalLatest ? totalLatest.litio + totalLatest.agro + totalLatest.turismo : 0;
-  const sectorShare = latestProvince === null ? 'No disponible' : percentageOf(latestProvince, allLatest);
-
+function LineChart({ rows }) {
+  const W = 380, H = 150, L = 34, R = 8, T = 8, B = 22;
+  const lines = SERIES.map(([key, label, color]) => {
+    const base = rows[0]?.[key];
+    return base ? { key, label, color, pts: rows.map((r) => ({ year: r.year, v: (r[key] / base) * 100 })) } : null;
+  }).filter(Boolean);
+  const top = Math.ceil(Math.max(150, ...lines.flatMap((l) => l.pts.map((p) => p.v))) / 100) * 100;
+  const x = (yr) => L + ((yr - 2015) / 11) * (W - L - R);
+  const y = (v) => T + (1 - v / top) * (H - T - B);
   return (
-    <section id={config.id} className={`sector-section sector-${config.tone}`}>
-      <div className="sector-intro">
-        <div><span className="section-number">{config.number} / SECTOR</span><h3>{config.title}</h3></div>
-        <div><p>{config.intro}</p><button className="sector-action" onClick={() => onExplore(config.filterId)}>Explorar este eje <ChevronDown size={14} /></button></div>
-      </div>
-      <div className="sector-indicators">
-        <MetricCard label="Último valor provincial" value={latestProvince === null ? 'No disponible' : `${latestProvince} ${config.unit}`} tone={config.tone === 'mining' ? 'violet' : config.tone === 'agro' ? 'green' : 'amber'} />
-        <MetricCard label="Participación de la serie" value={sectorShare} tone="cyan" />
-        <MetricCard label="Departamentos en foco" value={departments.length || 'No disponible'} tone="amber" />
-        <MetricCard label="Último año" value={latestOf(PROVINCIAL_TOTALS)?.year || 'No disponible'} tone="green" />
-      </div>
-      <div className="sector-grid">
-        <div className="sector-panel">
-          <div className="sector-panel-heading"><span>Evolución histórica</span><small>Serie provincial · 2015—2026</small></div>
-          <div className="sector-history">
-            {provinceSeries.map((year) => <div className="sector-year" key={year.year}><div className={`sector-bar bar-${config.tone}`} style={{ height: `${Math.max(((year[config.series] ?? 0) / maxHistory) * 100, 4)}%` }} /><span>{year.year}</span><b>{year[config.series] ?? 'No disponible'}</b></div>)}
-          </div>
-          <p className="sector-footnote">La escala representa la serie disponible para este eje; no se agregan años que no estén presentes en la base.</p>
-        </div>
-        <div className="sector-panel">
-          <div className="sector-panel-heading"><span>Distribución territorial</span><small>Comparación del último año</small></div>
-          <div className="sector-ranking">
-            {departments.map((department, index) => <button className="sector-rank-row" key={department.id} onClick={() => onSelectDepartment(department.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{department.name}</strong><i><em className={`bar-${config.tone}`} style={{ width: `${Math.max((department.latest / maxDepartment) * 100, 4)}%` }} /></i><b>{department.latest} {config.unit}</b></button>)}
-            {!departments.length && <p className="sector-unavailable">No hay departamentos disponibles para este eje en la base actual.</p>}
-          </div>
-        </div>
-      </div>
-    </section>
+    <div className="flex items-center gap-3">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-40 min-w-0">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <g key={i}>
+            <line x1={L} x2={W - R} y1={y((top / 4) * i)} y2={y((top / 4) * i)} stroke="#ffffff14" />
+            <text x={L - 5} y={y((top / 4) * i) + 3} textAnchor="end" fontSize="8" fill="#6b8296">{Math.round((top / 4) * i)}</text>
+          </g>
+        ))}
+        {lines.map((l) => (
+          <g key={l.key}>
+            <polyline fill="none" stroke={l.color} strokeWidth="2" points={l.pts.map((p) => `${x(p.year)},${y(p.v)}`).join(' ')} />
+            {l.pts.map((p) => <circle key={p.year} cx={x(p.year)} cy={y(p.v)} r="2.5" fill={l.color} />)}
+          </g>
+        ))}
+        {YEARS.map((yr) => <text key={yr} x={x(yr)} y={H - 6} textAnchor="middle" fontSize="8" fill="#6b8296">{yr}</text>)}
+      </svg>
+      <ul className="text-[10px] text-slate-300 space-y-2 shrink-0">
+        {lines.map((l) => <li key={l.key} className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />{l.label}</li>)}
+      </ul>
+    </div>
   );
 }
 
 export default function App() {
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [activeFilter, setActiveFilter] = useState('todos');
-  const [activeTab, setActiveTab] = useState('evolucion');
-  const [showDocModal, setShowDocModal] = useState(false);
+  const [view3d, setView3d] = useState(true);
+  const [areas, setAreas] = useState({});
+  const [chapter, setChapter] = useState(0);
+  const [showDoc, setShowDoc] = useState(false);
 
-  const selectedData = useMemo(() => {
-    if (!selectedDeptId) return PROVINCIAL_TOTALS;
-    return JUJUY_DEPARTMENTS_DATA.find((d) => d.id === selectedDeptId) || PROVINCIAL_TOTALS;
-  }, [selectedDeptId]);
+  // el mapa colorea por sector; "servicios" se agrupa con turismo para el filtro
+  const mapDepartments = useMemo(() => JUJUY_DEPARTMENTS_DATA.map((d) => ({
+    ...d, color: SECTORS[d.sector].color, sector: d.sector === 'servicios' ? 'turismo' : d.sector
+  })), []);
 
-  const activeSeriesKeys = activeFilter === 'todos' ? PRODUCTION_SERIES.map(([key]) => key) : [FILTER_TO_SERIES[activeFilter]];
-  const maxProd = useMemo(
-    () => Math.max(1, ...selectedData.yearlyData.flatMap((y) => activeSeriesKeys.map((key) => y[key]))),
-    [selectedData, activeFilter]
-  );
-  const maxEmpleo = useMemo(
-    () => Math.max(1, ...selectedData.yearlyData.map((y) => y.empleo)),
-    [selectedData]
-  );
+  const dept = JUJUY_DEPARTMENTS_DATA.find((d) => d.id === selectedDeptId);
+  const data = dept || PROVINCIAL_TOTALS;
+  const row = data.yearlyData.find((r) => r.year === LATEST);
+  const empChange = data.yearlyData[0]?.empleo ? (row.empleo / data.yearlyData[0].empleo - 1) * 100 : null;
+  const parts = SERIES.map(([key, label, color]) => ({ label, color, value: row[key] }));
+  const partTotal = parts.reduce((t, p) => t + p.value, 0);
+  const sector = dept ? SECTORS[dept.sector] : null;
+  const activities = dept ? dept.metrics.mainActivity.split(/,| y /).map((a) => a.trim()).filter(Boolean).slice(0, 4) : [];
 
-  const isProvince = !selectedDeptId;
-  const headlineLabel = isProvince ? 'Panorama provincial' : `${selectedData.region} · ${selectedData.sector}`;
-  const selectedLatest = latestOf(selectedData);
-  const provincialLatest = latestOf(PROVINCIAL_TOTALS);
-  const sectorTotal = selectedLatest ? selectedLatest.litio + selectedLatest.agro + selectedLatest.turismo : 0;
-  const sectorParticipation = selectedLatest ? [
-    ['Litio y minería', selectedLatest.litio, 'bar-mining'],
-    ['Agroindustria', selectedLatest.agro, 'bar-agro'],
-    ['Turismo y servicios', selectedLatest.turismo, 'bar-tourism']
-  ] : [];
-  const provincialAverageEmployment = provincialLatest ? provincialLatest.empleo / JUJUY_DEPARTMENTS_DATA.length : 0;
-  const employmentVsAverage = selectedLatest && provincialAverageEmployment > 0
-    ? ((selectedLatest.empleo / provincialAverageEmployment) - 1) * 100
-    : null;
-  const comparisonKey = FILTER_TO_SERIES[activeFilter] || 'empleo';
-  const comparisonLabel = activeFilter === 'todos' ? 'Empleo registrado' : PRODUCTION_SERIES.find(([key]) => key === comparisonKey)?.[1];
-  const comparisonData = useMemo(() => JUJUY_DEPARTMENTS_DATA
-    .map((department) => ({ id: department.id, name: department.name, value: latestOf(department)?.[comparisonKey] ?? null }))
-    .filter((department) => department.value !== null)
-    .sort((a, b) => b.value - a.value), [comparisonKey]);
-  const maxComparison = Math.max(1, ...comparisonData.map((department) => department.value));
-
-  const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  const exploreSector = (filterId) => { setActiveFilter(filterId); scrollTo('territorio'); };
-  const selectSectorDepartment = (departmentId) => { setSelectedDeptId(departmentId); scrollTo('evolucion'); };
-  const firstEmployment = PROVINCIAL_TOTALS.yearlyData[0]?.empleo;
-  const latestEmployment = latestOf(PROVINCIAL_TOTALS)?.empleo;
-  const employmentChange = firstEmployment && latestEmployment ? ((latestEmployment / firstEmployment) - 1) * 100 : null;
+  const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const filterTo = (f, c) => { setActiveFilter(f); setChapter(c); go('hero'); };
+  const CHAPTERS = [
+    ['01', 'Jujuy en transformación', () => { setSelectedDeptId(null); setActiveFilter('todos'); setChapter(0); go('top'); }],
+    ['02', 'Exploración territorial', () => filterTo('todos', 1)],
+    ['03', 'Evolución económica', () => { setChapter(2); go('indicadores'); }],
+    ['04', 'Minería y litio', () => filterTo('mineril', 3)],
+    ['05', 'Agroindustria', () => filterTo('agro', 4)],
+    ['06', 'Turismo y servicios', () => filterTo('turismo', 5)],
+    ['07', 'Empleo y desarrollo', () => { setChapter(6); go('indicadores'); }],
+    ['08', 'Fuentes y metodología', () => { setChapter(7); setShowDoc(true); }]
+  ];
+  const TOPNAV = [['Inicio', 0], ['Territorio', 1], ['Minería y litio', 3], ['Agroindustria', 4], ['Turismo y servicios', 5], ['Empleo', 6], ['Metodología', 7]];
+  const LEGEND = [['agro', 'Agroindustria'], ['mineril', 'Minería y litio'], ['turismo', 'Turismo y servicios']];
 
   return (
-    <div className="site-shell min-h-screen bg-[#061116] text-slate-100 selection:bg-cyan-300 selection:text-[#061116]">
-      <div className="ambient ambient-one" />
-      <div className="ambient ambient-two" />
-      <div className="grain" />
-      <nav className="chapter-sidebar" aria-label="Capítulos de la exploración">
-        <span className="chapter-sidebar-label">Capítulos</span>
-        {chapterLinks.map(([id, number, label]) => <button key={id} onClick={() => scrollTo(id)} title={label}><i>{number}</i><span>{label}</span></button>)}
-      </nav>
-
-      <header className="site-header">
-        <button className="brand-lockup" onClick={() => scrollTo('top')} aria-label="Volver al inicio">
-          <span className="brand-mark"><Globe2 size={18} strokeWidth={1.8} /></span>
-          <span><b>JUJUY</b><small>matriz productiva</small></span>
-        </button>
-        <nav className="chapter-nav" aria-label="Navegación principal">
-          {chapterLinks.map(([id, number, label]) => (
-            <button key={id} onClick={() => scrollTo(id)}><i>{number}</i>{label}</button>
+    <div id="top" className="min-h-screen bg-[#050d17] text-slate-100 pb-28">
+      {/* HEADER */}
+      <header className="h-14 flex items-center justify-between gap-4 px-5 border-b border-white/10 bg-[#07111d]/95 backdrop-blur sticky top-0 z-40">
+        <div className="flex items-center gap-2 font-bold tracking-wide text-lg shrink-0">
+          <Mountain className="w-6 h-6 text-teal-300" /> <span>JUJUY <span className="text-teal-300">DATA LAB</span></span>
+        </div>
+        <nav className="hidden lg:flex items-center gap-1 text-[13px]">
+          {TOPNAV.map(([label, c]) => (
+            <button key={label} onClick={CHAPTERS[c][2]}
+              className={`px-3 py-4 border-b-2 transition ${chapter === c ? 'border-teal-300 text-teal-200' : 'border-transparent text-slate-300 hover:text-white'}`}>{label}</button>
           ))}
         </nav>
-        <button className="header-document" onClick={() => setShowDocModal(true)}>
-          <FileText size={15} /> <span>Memoria descriptiva</span>
-        </button>
+        <div className="flex items-center gap-2 text-xs text-slate-300 shrink-0"><CalendarDays className="w-4 h-4 text-teal-300" /> 2015 – 2026</div>
       </header>
 
-      <main id="top" className="editorial-main">
-        <section className="intro-section">
-          <div className="intro-copy">
-            <p className="kicker"><span className="live-dot" /> Periodismo de datos · Jujuy · 2015—2026</p>
-            <h1>JUJUY: EL MAPA DE SU<br /><em>TRANSFORMACIÓN PRODUCTIVA</em></h1>
-            <p className="intro-deck">
-              Una exploración territorial de la evolución económica, productiva y laboral de los 16 departamentos de Jujuy durante el período 2015–2026.
-            </p>
-            <p className="intro-context">Esta plataforma convierte la matriz productiva provincial en una experiencia de lectura: compara territorios, identifica especializaciones y sigue los cambios de cada departamento.</p>
-            <div className="intro-actions">
-              <button className="primary-action" onClick={() => scrollTo('territorio')}>Acceder a la exploración <ChevronDown size={16} /></button>
-              <span className="intro-note">Mapa interactivo · 16 departamentos</span>
-            </div>
-          </div>
-          <div className="intro-index" aria-label="Índice de la investigación">
-            <span className="index-line" />
-            <p><b>01</b> La matriz<br />productiva</p>
-            <p><b>02</b> Distribución<br />territorial</p>
-            <p><b>03</b> Evolución<br />económica</p>
-          </div>
-        </section>
+      {/* HERO: MAPA A PANTALLA COMPLETA */}
+      <section id="hero" className="relative h-[72vh] min-h-[600px] overflow-hidden scroll-mt-14">
+        <div className="absolute inset-0">
+          <MapaJujuy departments={mapDepartments} selectedDeptId={selectedDeptId} activeFilter={activeFilter}
+            onSelect={(id) => { setSelectedDeptId(id); if (id) setChapter(1); }} view3d={view3d} onFeatures={setAreas} />
+        </div>
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-[#050d17] via-[#050d17]/55 to-transparent to-60%" />
+        <div className="absolute inset-x-0 bottom-0 h-24 pointer-events-none bg-gradient-to-t from-[#050d17] to-transparent" />
 
-        <section className="snapshot-strip" aria-label="Resumen provincial">
-          <div className="snapshot-heading"><span>Lectura rápida</span><small>Provincia de Jujuy</small></div>
-          <MetricCard label="Empleo registrado" value={PROVINCIAL_TOTALS.totalEmployment} tone="cyan" />
-          <MetricCard label="Exportaciones est." value={PROVINCIAL_TOTALS.totalExports} tone="violet" />
-          <MetricCard label="Red de Pymes" value={PROVINCIAL_TOTALS.totalSmes} tone="amber" />
-          <MetricCard label="Crecimiento PBI" value={PROVINCIAL_TOTALS.pbiGrowth} tone="green" />
-        </section>
-
-        <section id="territorio" className="chapter-section territory-section">
-          <div className="section-heading">
-            <span className="section-number">02 / DISTRIBUCIÓN TERRITORIAL</span>
-            <h2>La economía no se distribuye<br /><em>de manera uniforme.</em></h2>
-            <p>Selecciona un departamento para cambiar la escala de lectura. Los colores representan el eje productivo predominante y el mapa permite recorrer sus límites y relieve.</p>
-          </div>
-
-          <div className="territory-layout">
-            <aside className="filter-rail">
-              <div className="rail-label"><Filter size={14} /> Filtrar por sector</div>
-              <p className="rail-help">Atenúa los departamentos que no pertenecen al eje elegido.</p>
-              <div className="filter-list">
-                {FILTERS.map(({ id, label, count, Icon, iconCls, on }) => (
-                  <button key={id} onClick={() => setActiveFilter(id)} className={`filter-row ${activeFilter === id ? on : ''}`}>
-                    <Icon size={17} className={iconCls} /><span>{label}</span><small>{count}</small>
-                  </button>
-                ))}
+        {/* texto + métricas */}
+        <div className="absolute top-8 left-6 lg:left-10 max-w-[520px] pointer-events-none">
+          <p className="text-[11px] uppercase tracking-[.2em] text-teal-300 mb-3">Capítulo 01 ———</p>
+          <h1 className="text-3xl md:text-[44px] font-extrabold leading-[1.05] tracking-tight">
+            JUJUY: EL MAPA DE SU<br /><span className="text-teal-300">TRANSFORMACIÓN PRODUCTIVA</span>
+          </h1>
+          <p className="text-sm text-slate-300 mt-4 max-w-md">Una exploración territorial de la evolución económica, productiva y laboral de los 16 departamentos de Jujuy durante 2015–2026.</p>
+          <div className="flex flex-wrap gap-6 mt-6">
+            {[[TrendingUp, 'Crecimiento PBI', PROVINCIAL_TOTALS.pbiGrowth], [Users, 'Empleo registrado', PROVINCIAL_TOTALS.totalEmployment], [Globe2, 'Exportaciones', PROVINCIAL_TOTALS.totalExports]].map(([Icon, l, v]) => (
+              <div key={l} className="flex items-center gap-2.5">
+                <Icon className="w-6 h-6 text-teal-300" />
+                <div><div className="text-[10px] text-slate-400">{l}</div><div className="font-bold">{v}</div><div className="text-[10px] text-slate-500">({LATEST})</div></div>
               </div>
-              {selectedDeptId && (
-                <button className="reset-selection" onClick={() => setSelectedDeptId(null)}><RotateCcw size={13} /> Ver provincia completa</button>
-              )}
-              <div className="map-legend"><span className="legend-pulse" /> Selecciona una forma en el mapa</div>
-            </aside>
-
-            <div className="map-stage">
-              <div className="stage-meta"><span><span className="live-dot" /> Mapa interactivo</span><span>IGN / IDERA · relieve</span></div>
-              <div className="map-frame"><MapaJujuy departments={JUJUY_DEPARTMENTS_DATA} selectedDeptId={selectedDeptId} activeFilter={activeFilter} onSelect={setSelectedDeptId} /></div>
-              <div className="map-caption"><Info size={14} /><span>Arrastra para mover · clic derecho para rotar · rueda para acercar</span><span className="map-coordinates">JUJUY / ARG</span></div>
-            </div>
+            ))}
           </div>
-        </section>
+          <button onClick={() => go('indicadores')} className="pointer-events-auto mt-6 flex items-center gap-2 border border-teal-300/70 text-teal-200 rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-teal-300/10">
+            <ArrowRight className="w-4 h-4" /> Explorar el territorio
+          </button>
+        </div>
 
-        <section id="evolucion" className="chapter-section evolution-section">
-          <div className="section-heading compact-heading">
-            <span className="section-number">03 / EVOLUCIÓN ECONÓMICA</span>
-            <h2>El tiempo también<br /><em>deja un mapa.</em></h2>
-          </div>
+        {/* 3D / 2D */}
+        <div className={`${glass} absolute left-6 lg:left-10 bottom-20 hidden md:flex flex-col rounded-xl overflow-hidden text-xs z-10`}>
+          {[[true, '3D'], [false, '2D']].map(([v, l]) => (
+            <button key={l} onClick={() => setView3d(v)} className={`px-4 py-2.5 ${view3d === v ? 'bg-teal-400 text-[#04141c] font-bold' : 'text-slate-300 hover:bg-white/5'}`}>{l}</button>
+          ))}
+        </div>
 
-          <div className="analysis-layout">
-            <div className="profile-card">
-              <div className="profile-top"><span className="profile-tag">{headlineLabel}</span>{selectedDeptId && <button onClick={() => setSelectedDeptId(null)} aria-label="Limpiar selección"><X size={14} /></button>}</div>
-              <h3>{selectedData.name}</h3>
-              <p>{selectedData.metrics?.mainActivity || 'Estructura económica consolidada de Jujuy.'}</p>
-              <div className="profile-rule" />
-              <div className="profile-highlight"><span>Aporte PBI</span><strong>{selectedData.metrics?.pbiShare || '100%'}</strong></div>
-              <div className="profile-highlight"><span>Crec. empleo</span><strong className="green-value">{selectedData.metrics?.employmentGrowth || selectedData.pbiGrowth}</strong></div>
-              {selectedDeptId ? (
-                <div className="department-inspector">
-                  <div className="inspector-context"><span>Contexto territorial</span><b>{selectedData.region || 'No disponible'}</b><small>Eje predominante: {selectedData.sector || 'No disponible'}</small></div>
-                  <div className="inspector-facts">
-                    <div><span>Superficie territorial</span><b>No disponible</b><small>No figura en la base actual</small></div>
-                    <div><span>Último año</span><b>{availableValue(selectedLatest?.year)}</b><small>Fin de la serie disponible</small></div>
-                  </div>
-                  <div className="inspector-block"><span className="inspector-label">Indicadores productivos</span><div className="inspector-grid"><div><small>Empleo formal</small><b>{availableValue(selectedData.metrics?.formalJobs)}</b></div><div><small>Red de Pymes</small><b>{availableValue(selectedData.metrics?.localSmes)}</b></div><div><small>Exportaciones</small><b>{availableValue(selectedData.metrics?.exportValue)}</b></div><div><small>Crec. empleo</small><b>{availableValue(selectedData.metrics?.employmentGrowth)}</b></div></div></div>
-                  <div className="inspector-block"><span className="inspector-label">Participación sectorial · {availableValue(selectedLatest?.year)}</span>{sectorParticipation.map(([label, value, colorClass]) => <div className="participation-row" key={label}><div><span>{label}</span><b>{percentageOf(value, sectorTotal)}</b></div><div className="participation-track"><i className={colorClass} style={{ width: `${sectorTotal > 0 ? (value / sectorTotal) * 100 : 0}%` }} /></div></div>)}</div>
-                  <div className="comparison-note"><span>Comparación con el promedio provincial</span><b>{employmentVsAverage === null ? 'No disponible' : `${employmentVsAverage >= 0 ? '+' : ''}${employmentVsAverage.toFixed(1)}%`}</b><small>Empleo del último año frente al promedio por departamento calculado sobre los 16 departamentos.</small></div>
-                </div>
-              ) : (
-                <div className="province-context"><span>Lectura provincial</span><p>Selecciona un departamento en el mapa para abrir su ficha territorial, comparar sus indicadores y consultar la composición sectorial de la última observación disponible.</p></div>
-              )}
+        {/* leyenda / filtro */}
+        <div className={`${glass} absolute left-6 lg:left-10 bottom-6 rounded-xl px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] z-10`}>
+          {LEGEND.map(([id, label]) => (
+            <button key={id} onClick={() => setActiveFilter(activeFilter === id ? 'todos' : id)}
+              className={`flex items-center gap-1.5 ${activeFilter !== 'todos' && activeFilter !== id ? 'opacity-40' : ''}`}>
+              <i className="w-2.5 h-2.5 rounded-full" style={{ background: SECTORS[id].color }} />{label}
+            </button>
+          ))}
+          <span className="flex items-center gap-1.5 text-slate-400"><i className="w-2.5 h-2.5 rounded-full" style={{ background: SECTORS.servicios.color }} />Servicios</span>
+        </div>
+
+        {/* ficha flotante del departamento */}
+        {dept && (
+          <aside className={`${glass} absolute right-4 top-36 bottom-12 w-[350px] max-w-[calc(100%-2rem)] rounded-xl p-4 overflow-y-auto z-10 hidden md:flex flex-col gap-3`}>
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <button onClick={() => setSelectedDeptId(null)} className="flex items-center gap-2 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" /> Volver a la provincia</button>
+              <button onClick={() => setSelectedDeptId(null)} aria-label="Cerrar"><X className="w-4 h-4" /></button>
             </div>
-
-            <div className="chart-card">
-              <div className="chart-header"><div><span className="chart-eyebrow">{activeFilter === 'todos' ? 'Serie histórica · 2015—2026' : `Filtro activo · ${FILTERS.find((filter) => filter.id === activeFilter)?.label}`}</span><h3>{activeTab === 'evolucion' ? 'Producción por sector' : activeTab === 'empleo' ? 'Empleo formal registrado' : 'Comparación entre departamentos'}</h3></div><div className="tab-switcher">{TABS.map(({ id, label, Icon }) => <button key={id} onClick={() => setActiveTab(id)} className={activeTab === id ? 'active' : ''}><Icon size={14} />{label}</button>)}</div></div>
-
-              {activeTab === 'evolucion' ? (
-                <div className="production-chart">
-                  <div className="chart-gridlines"><span>máximo relativo</span><span>0</span></div>
-                  <div className="bars-area">
-                    {selectedData.yearlyData.map((item) => (
-                      <div key={item.year} className="year-column">
-                        <div className="bar-tooltip"><b>{item.year}</b>{PRODUCTION_SERIES.filter(([key]) => activeSeriesKeys.includes(key)).map(([key, label, , tooltipClass]) => <span className={tooltipClass} key={key}>{label}: {item[key]} {key === 'litio' ? 'k Tn' : key === 'agro' ? 'k Tn' : 'k Serv'}</span>)}</div>
-                        <div className="bar-group">
-                          {PRODUCTION_SERIES.filter(([key]) => activeSeriesKeys.includes(key)).map(([key, , cls]) => <div key={key} className={`chart-bar ${cls}`} style={{ height: `${Math.max((item[key] / maxProd) * 100, 4)}%` }} />)}
-                        </div>
-                        <span className="year-label">{item.year}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="chart-legend">{PRODUCTION_SERIES.filter(([key]) => activeSeriesKeys.includes(key)).map(([key, label, cls]) => <span key={key}><i className={cls} />{label}</span>)}</div>
+            <div className="flex items-start justify-between gap-2">
+              <div><h2 className="text-2xl font-bold leading-tight">{dept.name}</h2><p className="text-sm text-slate-400">{dept.region}</p></div>
+              <span className="text-[11px] px-2.5 py-1 rounded-lg border whitespace-nowrap" style={{ color: sector.color, borderColor: sector.color + '80', background: sector.color + '1f' }}>{sector.label}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="border border-white/10 rounded-lg p-2.5"><div className="text-[10px] text-slate-400">Superficie</div><b>{areas[dept.id] ? `${fmt(areas[dept.id])} km²` : NA}</b></div>
+              <div className="border border-white/10 rounded-lg p-2.5"><div className="text-[10px] text-slate-400">Altitud promedio</div><b>{NA}</b></div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold mb-2">Actividades económicas principales</h3>
+              <ul className="space-y-1.5 text-[13px] text-slate-300">
+                {activities.map((a) => <li key={a} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sector.color }} />{a}</li>)}
+              </ul>
+            </div>
+            <div className="grid grid-cols-[1.25fr_1fr] gap-2">
+              <div className="border border-white/10 rounded-lg p-2.5">
+                <h3 className="text-[11px] font-semibold mb-2">Participación en la serie ({LATEST})</h3>
+                <div className="flex items-center gap-2">
+                  <Donut parts={parts} />
+                  <ul className="text-[10px] space-y-1 min-w-0">
+                    {parts.map((p) => <li key={p.label} className="flex items-center gap-1 text-slate-300"><i className="w-2 h-2 rounded-sm shrink-0" style={{ background: p.color }} /><b>{partTotal ? `${Math.round((p.value / partTotal) * 100)}%` : NA}</b></li>)}
+                  </ul>
                 </div>
-              ) : activeTab === 'empleo' ? (
-                <div className="employment-chart"><div className="employment-note"><ArrowDownRight size={16} /><span>Valores relativos al máximo de la serie seleccionada.</span></div>{selectedData.yearlyData.map((item) => <div className="employment-row" key={item.year}><div><span>{item.year}</span><b>{item.empleo.toLocaleString()} <small>puestos</small></b></div><div className="employment-track"><div style={{ width: `${Math.max((item.empleo / maxEmpleo) * 100, 5)}%` }} /></div></div>)}</div>
-              ) : (
-                <div className="department-comparison"><div className="employment-note"><ArrowDownRight size={16} /><span>{comparisonLabel} · último año disponible · {activeFilter === 'todos' ? 'ordenado por empleo' : 'ordenado por serie sectorial'}</span></div>{comparisonData.map((department, index) => <div className={`comparison-row ${department.id === selectedDeptId ? 'is-selected' : ''}`} key={department.id} onClick={() => setSelectedDeptId(department.id)}><span className="comparison-rank">{String(index + 1).padStart(2, '0')}</span><span className="comparison-name">{department.name}</span><div className="comparison-track"><i style={{ width: `${Math.max((department.value / maxComparison) * 100, 4)}%` }} /></div><b>{department.value.toLocaleString()}</b></div>)}</div>
-              )}
-
-              <div className="metric-grid">
-                <MetricCard label="Empleo formal" value={selectedData.metrics?.formalJobs || selectedData.totalEmployment} tone="cyan" />
-                <MetricCard label="Red de Pymes" value={selectedData.metrics?.localSmes || selectedData.totalSmes} tone="amber" />
-                <MetricCard label="Exportaciones" value={selectedData.metrics?.exportValue || selectedData.totalExports} tone="violet" />
-                <MetricCard label="Crec. empleo" value={selectedData.metrics?.employmentGrowth || selectedData.pbiGrowth} tone="green" />
+              </div>
+              <div className="border border-white/10 rounded-lg p-2.5">
+                <h3 className="text-[11px] font-semibold flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Empleo registrado</h3>
+                <div className="text-xl font-bold mt-2">{fmt(row.empleo)}</div>
+                <div className="text-[10px] text-slate-400">puestos de trabajo</div>
+                {empChange !== null && <div className="text-[11px] text-teal-300 mt-1">↑ {empChange >= 0 ? '+' : ''}{empChange.toFixed(0)}% vs. 2015</div>}
               </div>
             </div>
+            <button onClick={() => go('indicadores')} className="mt-auto border border-teal-300/60 text-teal-200 rounded-lg py-2 text-xs hover:bg-teal-300/10 flex items-center justify-center gap-2">
+              Ver detalle del departamento <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </aside>
+        )}
+      </section>
+
+      {/* INDICADORES */}
+      <section id="indicadores" className="grid grid-cols-1 xl:grid-cols-[1.05fr_1.25fr_.9fr] gap-4 px-4 lg:px-6 pt-2 scroll-mt-16">
+        <div className={`${card} p-4`}>
+          <h3 className="text-sm font-semibold mb-3">Indicadores provinciales <span className="text-slate-400 font-normal">({LATEST})</span></h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-2 gap-2">
+            {[
+              [TrendingUp, 'Crecimiento PBI', PROVINCIAL_TOTALS.pbiGrowth, '#2dd4bf'],
+              [Globe2, 'Exportaciones', PROVINCIAL_TOTALS.totalExports, '#a855f7'],
+              [Users, 'Empleo registrado', PROVINCIAL_TOTALS.totalEmployment, '#10b981'],
+              [Layers, 'Empresas y Pymes', PROVINCIAL_TOTALS.totalSmes, '#f59e0b']
+            ].map(([Icon, label, value, color]) => (
+              <div key={label} className="border border-white/10 rounded-lg p-3 bg-[#07111d]/60">
+                <Icon className="w-4 h-4 mb-2" style={{ color }} />
+                <div className="text-[10px] text-slate-400">{label}</div>
+                <div className="text-lg font-bold" style={{ color }}>{value}</div>
+              </div>
+            ))}
           </div>
-        </section>
+        </div>
+        <div className={`${card} p-4`}>
+          <h3 className="text-sm font-semibold">Evolución de la producción por sector</h3>
+          <p className="text-[10px] text-slate-400 mb-2">(Índice 2015 = 100) · {dept ? dept.name : 'Provincia'}</p>
+          <LineChart rows={data.yearlyData} />
+        </div>
+        <div className={`${card} p-4`}>
+          <h3 className="text-sm font-semibold">Empleo registrado por año</h3>
+          <p className="text-[10px] text-slate-400 mb-3">{dept ? dept.name : 'Provincia'} · relativo al máximo de la serie</p>
+          <div className="flex items-end justify-around gap-2 h-36">
+            {data.yearlyData.map((r) => {
+              const max = Math.max(...data.yearlyData.map((x) => x.empleo));
+              return (
+                <div key={r.year} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
+                  <span className="text-[10px] text-slate-300">{fmt(r.empleo)}</span>
+                  <div className="w-full max-w-[34px] rounded-t" style={{ height: `${Math.max((r.empleo / max) * 100, 4) * 0.75}%`, background: r.year === LATEST ? '#2dd4bf' : '#1e6f78' }} />
+                  <span className="text-[10px] text-slate-500">{r.year}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
 
-        <section id="sectores" className="sectors-overview">
-          <div className="section-heading compact-heading"><span className="section-number">04—06 / SECTORES</span><h2>Tres lecturas para<br /><em>un mismo territorio.</em></h2><p>Explora cada eje productivo con la misma estructura: evolución histórica, indicadores derivados de las series disponibles y comparación entre departamentos.</p></div>
-          {SECTOR_SECTIONS.map((config) => <SectorSection key={config.id} config={config} onExplore={exploreSector} onSelectDepartment={selectSectorDepartment} />)}
-        </section>
+      <p className="px-6 pt-4 text-[11px] text-slate-500">
+        Fuentes: límites IGN / IDERA · relieve Terrain Tiles (AWS) · imágenes Esri, Maxar, Earthstar Geographics · datos económicos: ilustrativos, pendientes de fuente oficial.
+      </p>
 
-        <section id="empleo-desarrollo" className="employment-chapter">
-          <div className="employment-chapter-heading"><span className="section-number">07 / EMPLEO Y DESARROLLO</span><h2>El trabajo también<br /><em>deja una huella.</em></h2><p>La serie de empleo registrado funciona como una lectura transversal del desarrollo territorial. El detalle anual completo está disponible en la pestaña de empleo de la sección de evolución.</p><button className="sector-action" onClick={() => { setActiveTab('empleo'); scrollTo('evolucion'); }}>Abrir evolución del empleo <ChevronDown size={14} /></button></div>
-          <div className="employment-chapter-data"><div className="employment-chapter-metrics"><MetricCard label="Empleo inicial disponible" value={firstEmployment?.toLocaleString() || 'No disponible'} tone="cyan" /><MetricCard label="Último empleo disponible" value={latestEmployment?.toLocaleString() || 'No disponible'} tone="green" /><MetricCard label="Variación de la serie" value={employmentChange === null ? 'No disponible' : `${employmentChange >= 0 ? '+' : ''}${employmentChange.toFixed(1)}%`} tone="violet" /></div><div className="employment-sparkline">{PROVINCIAL_TOTALS.yearlyData.map((year) => <div className="employment-spark-column" key={year.year}><i style={{ height: `${Math.max((year.empleo / Math.max(1, latestEmployment || 1)) * 100, 5)}%` }} /><span>{year.year}</span></div>)}</div></div>
-        </section>
+      {/* LÍNEA DE CAPÍTULOS */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#07111d]/95 backdrop-blur border-t border-white/10 px-4 lg:px-8 pt-3 pb-3 flex items-end gap-4" aria-label="Capítulos">
+        <div className="hidden xl:block w-64 shrink-0 text-[11px] text-slate-400 leading-snug border-r border-white/10 pr-4">
+          <b className="text-slate-200 text-xs">Recorré la historia productiva de Jujuy</b><br />Deslizá para descubrir cómo evolucionó su matriz productiva.
+        </div>
+        <div className="flex-1 grid grid-cols-4 lg:grid-cols-8 gap-x-2 gap-y-2">
+          {CHAPTERS.map(([n, label, fn], i) => (
+            <button key={n} onClick={fn} className="text-left group">
+              <div className="flex items-center gap-2">
+                <span className={`w-6 h-6 rounded-full grid place-items-center text-[10px] border ${chapter === i ? 'border-teal-300 text-teal-200 bg-teal-300/10' : 'border-white/15 text-slate-400'}`}>{n}</span>
+                <span className={`text-[10px] leading-tight hidden sm:block ${chapter === i ? 'text-teal-200' : 'text-slate-400 group-hover:text-slate-200'}`}>{label}</span>
+              </div>
+              <div className={`h-0.5 mt-2 rounded ${i <= chapter ? 'bg-teal-300' : 'bg-white/10'}`} />
+            </button>
+          ))}
+        </div>
+      </nav>
 
-        <section id="conclusiones" className="method-section">
-          <div><span className="section-number">08 / CONCLUSIONES</span><h2>Una matriz para<br /><em>seguir preguntando.</em></h2></div>
-          <div className="method-copy"><p>La exploración organiza la información disponible para leer Jujuy a distintas escalas: provincia, departamento y sector. Sus gráficos no cierran la conversación; permiten volver al mapa, comparar territorios y revisar cómo cambia cada serie a lo largo del tiempo.</p><div className="method-sources"><span>Lectura cartográfica</span><b>IGN / IDERA</b><span>Relieve</span><b>Terrain Tiles · AWS</b><span>Datos económicos</span><b>Verificar fuentes antes de presentar</b></div></div>
-        </section>
-      </main>
-
-      <footer className="site-footer"><span><b>JUJUY / MATRIZ PRODUCTIVA</b> · Concurso “Contar con Datos”</span><span>Exploración departamental · 2015—2026</span></footer>
-
-      {showDocModal && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setShowDocModal(false)}><div className="document-modal" role="dialog" aria-modal="true" aria-labelledby="document-title"><div className="modal-heading"><span><FileText size={18} /> Memoria descriptiva</span><button onClick={() => setShowDocModal(false)} aria-label="Cerrar"><X size={18} /></button></div><div className="modal-body"><div><b>01 · Título y cobertura</b><p>Matriz Productiva Departamental de Jujuy (2015–2026), con los 16 departamentos de la provincia.</p></div><div><b>02 · Resumen</b><p>Exploración interactiva de la estructura productiva por departamento: minería, agroindustria y turismo.</p></div><div><b>03 · Fuentes y método</b><p>Completar con cada fuente real (organismo, archivo, fecha) y aclarar qué valores son estimaciones propias y cómo se calcularon.</p></div></div><button className="modal-close" onClick={() => setShowDocModal(false)}>Cerrar</button></div></div>}
+      {showDoc && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && setShowDoc(false)}>
+          <div className="bg-[#0a1624] border border-white/15 rounded-xl max-w-lg w-full p-6">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
+              <h3 className="font-bold flex items-center gap-2"><FileText className="w-4 h-4 text-teal-300" /> Fuentes y metodología</h3>
+              <button onClick={() => setShowDoc(false)} aria-label="Cerrar"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
+              <p><b className="text-teal-300">Cobertura.</b> Matriz productiva de los 16 departamentos de Jujuy, 2015–2026.</p>
+              <p><b className="text-teal-300">Territorio.</b> Límites departamentales: IGN. La superficie se calcula a partir de esos límites. Relieve: Terrain Tiles (AWS). Imagen satelital: Esri, Maxar, Earthstar Geographics.</p>
+              <p><b className="text-teal-300">Datos económicos.</b> Completar con cada fuente real (organismo, archivo, fecha) e indicar qué valores son estimaciones propias y cómo se calcularon. Altitud y población se muestran como “No disponible” hasta incorporar su fuente.</p>
+            </div>
+            <button onClick={() => setShowDoc(false)} className="mt-5 ml-auto block border border-teal-500/60 text-teal-200 px-4 py-2 rounded-lg text-xs hover:bg-teal-500/10">Cerrar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

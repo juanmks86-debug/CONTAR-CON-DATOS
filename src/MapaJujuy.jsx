@@ -5,6 +5,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // GeoJSON real de los 16 departamentos de Jujuy (IGN/IDERA), en /public/data/
 const GEOJSON_URL = '/data/jujuy-departamentos.geojson';
 const JUJUY_BOUNDS = [[-67.3, -24.5], [-64.0, -21.7]];
+// se ajusta a los límites reales del GeoJSON cuando carga
+let provinceBounds = JUJUY_BOUNDS;
 
 const norm = (s = '') =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]/g, '').trim();
@@ -52,23 +54,24 @@ export function zoomToDepartment(map, feature) {
 
   extendCoordinates(feature.geometry.coordinates);
 
-  // padding de 100 px, pero nunca más de un cuarto del lado menor del mapa,
-  // para que fitBounds no falle en pantallas chicas
-  const { clientWidth, clientHeight } = map.getContainer();
-  const padding = Math.max(10, Math.min(100, Math.floor(Math.min(clientWidth, clientHeight) / 4)));
+  // deja libre la ficha de la derecha en pantallas grandes (y evita paddings imposibles en pantallas chicas)
+  const wide = map.getContainer().clientWidth > 1000;
+  const padding = { top: 100, bottom: 100, left: wide ? 120 : 40, right: wide ? 420 : 40 };
 
   map.fitBounds(bounds, {
     padding,
     duration: 1400,
     maxZoom: 10,
-    pitch: 55,
-    bearing: -15
+    pitch: map.getPitch() > 0 ? 55 : 0,
+    bearing: map.getPitch() > 0 ? -15 : 0
   });
 }
 
+const viewPad = (el) => ({ top: 40, bottom: 40, right: 40, left: el.clientWidth > 1000 ? 380 : 40 });
+
 export function resetMapView(map) {
-  map.fitBounds(JUJUY_BOUNDS, {
-    padding: 28,
+  map.fitBounds(provinceBounds, {
+    padding: viewPad(map.getContainer()),
     duration: 1100,
     pitch: 52,
     bearing: -8
@@ -104,7 +107,44 @@ class ResetViewControl {
   }
 }
 
-export default function MapaJujuy({ departments, selectedDeptId, activeFilter, onSelect }) {
+// punto de etiqueta: centroide del polígono más grande
+const centroid = (ring) => {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x0, y0] = ring[i]; const [x1, y1] = ring[i + 1];
+    const f = x0 * y1 - x1 * y0;
+    a += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f;
+  }
+  a *= 0.5;
+  return a ? [cx / (6 * a), cy / (6 * a)] : ring[0];
+};
+const labelPoint = (g) => {
+  const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+  const big = polys.reduce((m, p) => (ringArea(p[0]) > ringArea(m[0]) ? p : m), polys[0]);
+  return centroid(big[0]);
+};
+
+// Área (km²) con proyección sinusoidal (equivalente), calculada del GeoJSON del IGN
+const ringArea = (ring) => {
+  const R = 6371.0088, rad = Math.PI / 180;
+  const pt = ([lon, lat]) => [R * lon * rad * Math.cos(lat * rad), R * lat * rad];
+  let a = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x1, y1] = pt(ring[i]); const [x2, y2] = pt(ring[i + 1]);
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a) / 2;
+};
+const featureArea = (g) => {
+  const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+  return polys.reduce((t, p) => t + ringArea(p[0]) - p.slice(1).reduce((h, r) => h + ringArea(r), 0), 0);
+};
+
+export default function MapaJujuy({ departments, selectedDeptId, activeFilter, onSelect, view3d = true, onFeatures }) {
+  const onFeaturesRef = useRef(onFeatures);
+  onFeaturesRef.current = onFeatures;
+  const prevView = useRef(view3d);
+  const markersRef = useRef([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const containerRef = useRef(null);
@@ -121,7 +161,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
     const map = new maplibregl.Map({
       container: containerRef.current,
       bounds: JUJUY_BOUNDS,
-      fitBoundsOptions: { padding: 20 },
+      fitBoundsOptions: { padding: viewPad(containerRef.current) },
       pitch: 50,
       bearing: -8,
       maxPitch: 75,
@@ -130,13 +170,19 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       attributionControl: false,
       style: {
         version: 8,
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         light: {
           anchor: 'viewport',
           color: '#c5f4f2',
           intensity: 0.45
         },
         sources: {
+          sat: {
+            type: 'raster',
+            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tileSize: 256,
+            maxzoom: 17
+          },
+          'dem-hs': { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 14 },
           dem: {
             type: 'raster-dem',
             tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
@@ -147,10 +193,11 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
         },
         layers: [
           { id: 'bg', type: 'background', paint: { 'background-color': '#061116' } },
+          { id: 'sat', type: 'raster', source: 'sat', paint: { 'raster-saturation': -0.25, 'raster-brightness-max': 0.75 } },
           {
-            id: 'sombreado', type: 'hillshade', source: 'dem',
+            id: 'sombreado', type: 'hillshade', source: 'dem-hs',
             paint: {
-              'hillshade-exaggeration': 0.85,
+              'hillshade-exaggeration': 0.45,
               'hillshade-shadow-color': '#02090d',
               'hillshade-highlight-color': '#6f9b9b',
               'hillshade-illumination-direction': 315,
@@ -168,11 +215,11 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
     if (resizeObserver && containerRef.current) resizeObserver.observe(containerRef.current);
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-    map.addControl(new ResetViewControl(() => onSelectRef.current(null)), 'top-left');
+    map.addControl(new ResetViewControl(() => onSelectRef.current(null)), 'top-right');
     map.addControl(
       new maplibregl.AttributionControl({
         compact: true,
-        customAttribution: 'Límites: IGN / IDERA · Relieve: Mapzen Terrain Tiles (AWS)'
+        customAttribution: 'Límites: IGN / IDERA · Relieve: Mapzen Terrain Tiles (AWS) · Imágenes: Esri, Maxar, Earthstar Geographics'
       })
     );
 
@@ -204,6 +251,11 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
           setError(`Se esperaban 16 departamentos y se encontraron ${gj.features.length}. Revisá los nombres del GeoJSON.`);
         }
         featuresRef.current = gj.features;
+        const pb = new maplibregl.LngLatBounds();
+        const ext = (c) => (typeof c[0] === 'number' ? pb.extend(c) : c.forEach(ext));
+        gj.features.forEach((f) => ext(f.geometry.coordinates));
+        if (!pb.isEmpty()) provinceBounds = pb;
+        onFeaturesRef.current?.(Object.fromEntries(gj.features.map((f) => [f.properties.deptId, featureArea(f.geometry)])));
 
         map.addSource('deptos', { type: 'geojson', data: gj, promoteId: 'deptId' });
         map.addLayer({
@@ -214,7 +266,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
               'case',
               ['boolean', ['feature-state', 'selected'], false], 0.7,
               ['boolean', ['feature-state', 'dimmed'], false], 0.06,
-              0.38
+              0.5
             ]
           }
         });
@@ -225,30 +277,18 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
             'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 3, 1.2]
           }
         });
-        map.addLayer({
-          id: 'deptos-labels',
-          type: 'symbol',
-          source: 'deptos',
-          layout: {
-            'text-field': ['get', 'label'],
-            'text-size': ['interpolate', ['linear'], ['zoom'], 5, 9, 9, 12],
-            'text-font': ['Open Sans Regular'],
-            'text-allow-overlap': false,
-            'symbol-placement': 'point'
-          },
-          paint: {
-            'text-color': '#d9f5f3',
-            'text-halo-color': '#061116',
-            'text-halo-width': 1.5,
-            'text-opacity': ['case', ['boolean', ['feature-state', 'dimmed'], false], 0.25, 0.92]
-          }
+
+        markersRef.current = gj.features.map((f) => {
+          const el = document.createElement('button');
+          el.type = 'button';
+          el.className = 'dept-label';
+          el.textContent = f.properties.label;
+          el.addEventListener('click', (ev) => { ev.stopPropagation(); onSelectRef.current(f.properties.deptId); });
+          const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(labelPoint(f.geometry)).addTo(map);
+          return { id: f.properties.deptId, sector: f.properties.sector, el, marker };
         });
 
         map.on('click', 'deptos-fill', (e) => {
-          const id = e.features?.[0]?.properties?.deptId;
-          if (id) onSelectRef.current(id);
-        });
-        map.on('click', 'deptos-labels', (e) => {
           const id = e.features?.[0]?.properties?.deptId;
           if (id) onSelectRef.current(id);
         });
@@ -260,27 +300,20 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
           map.getCanvas().style.cursor = 'pointer';
           popup.setLngLat(e.lngLat).setText(`Departamento: ${e.features[0].properties.label}`).addTo(map);
         });
-        map.on('mousemove', 'deptos-labels', (e) => {
-          map.getCanvas().style.cursor = 'pointer';
-          popup.setLngLat(e.lngLat).setText(`Departamento: ${e.features[0].properties.label}`).addTo(map);
-        });
         map.on('mouseleave', 'deptos-fill', () => {
-          map.getCanvas().style.cursor = '';
-          popup.remove();
-        });
-        map.on('mouseleave', 'deptos-labels', () => {
           map.getCanvas().style.cursor = '';
           popup.remove();
         });
 
         readyRef.current = true;
         setLoading(false);
+        map.fitBounds(provinceBounds, { padding: viewPad(map.getContainer()), duration: 0 });
         // aplicar estado inicial (filtro / selección)
         map.fire('jujuy-ready');
       } catch (err) {
         console.error('No se pudo cargar el GeoJSON de departamentos:', err);
         setLoading(false);
-        setError('Falta el GeoJSON de departamentos. Guardalo en public/data/jujuy-departamentos.geojson (ver README).');
+        setError(`No se pudo mostrar la provincia: ${err.message}. El GeoJSON debe estar en public/data/jujuy-departamentos.geojson`);
       }
     });
 
@@ -288,6 +321,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       readyRef.current = false;
       resizeObserver?.disconnect();
       popup.remove();
+      markersRef.current.forEach((m) => m.marker.remove());
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,9 +338,25 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
         );
       });
     };
-    if (readyRef.current) apply();
-    else map.once('jujuy-ready', apply);
+    const applyAll = () => {
+      apply();
+      markersRef.current.forEach((m) => m.el.classList.toggle('is-dim', activeFilter !== 'todos' && m.sector !== activeFilter));
+    };
+    if (readyRef.current) applyAll();
+    else map.once('jujuy-ready', applyAll);
   }, [activeFilter]);
+
+  // --- Vista 3D / 2D ---
+  useEffect(() => {
+    const map = mapRef.current;
+    if (prevView.current === view3d) return;
+    prevView.current = view3d;
+    const apply = () => {
+      map.setTerrain(view3d ? { source: 'dem', exaggeration: 1.85 } : null);
+      map.easeTo({ pitch: view3d ? 52 : 0, bearing: view3d ? -8 : 0, duration: 800 });
+    };
+    if (readyRef.current) apply(); else map.once('jujuy-ready', apply);
+  }, [view3d]);
 
   // --- Selección: resalta y hace fitBounds al departamento ---
   useEffect(() => {
@@ -323,6 +373,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       } else {
         resetMapView(map);
       }
+      markersRef.current.forEach((m) => m.el.classList.toggle('is-selected', m.id === selectedDeptId));
       prevSelected.current = selectedDeptId;
     };
     if (readyRef.current) apply();
@@ -333,13 +384,13 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full rounded-xl overflow-hidden" />
       {loading && (
-        <div className="map-loading" role="status" aria-live="polite">
-          <span className="map-loading-spinner" />
+        <div className="absolute inset-0 z-[3] flex items-center justify-center gap-2 text-xs text-teal-100 bg-[#061116]/80" role="status" aria-live="polite">
+          <span className="w-3.5 h-3.5 border-2 border-teal-300/30 border-t-teal-300 rounded-full animate-spin" />
           <span>Cargando relieve y límites departamentales…</span>
         </div>
       )}
       {error && (
-        <div className="absolute left-3 right-3 bottom-3 bg-amber-950/90 border border-amber-700 text-amber-200 text-xs rounded-lg p-3">
+        <div className="absolute top-3 right-14 max-w-sm z-[3] bg-amber-950/95 border border-amber-700 text-amber-200 text-xs rounded-lg p-3">
           {error}
         </div>
       )}
