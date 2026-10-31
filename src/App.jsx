@@ -16,6 +16,8 @@ const SERIES = [['litio', 'Minería y litio', '#a855f7'], ['agro', 'Agroindustri
 const YEARS = [2015, 2018, 2021, 2024, 2026];
 const LATEST = 2026;
 const NA = 'No disponible';
+const LEVEL_NAMES = ['Provincial', 'Departamental', 'Actividad', 'Detalle'];
+const SCENE_TOGGLES = [['people', 'Personas'], ['vehicles', 'Vehículos'], ['facilities', 'Instalaciones'], ['animate', 'Animaciones']];
 const fmt = (n) => Math.round(n).toLocaleString('es-AR');
 const glass = 'bg-[#07111d]/85 border border-white/12 backdrop-blur-md';
 const card = 'bg-[#0a1624] border border-white/10 rounded-xl';
@@ -77,6 +79,9 @@ export default function App() {
   const [areas, setAreas] = useState({});
   const [chapter, setChapter] = useState(0);
   const [showDoc, setShowDoc] = useState(false);
+  const [sceneOpts, setSceneOpts] = useState({ people: true, vehicles: true, facilities: true, animate: true });
+  const [picked, setPicked] = useState(null);
+  const [level, setLevel] = useState(1);
 
   // el mapa colorea por sector; "servicios" se agrupa con turismo para el filtro
   const mapDepartments = useMemo(() => JUJUY_DEPARTMENTS_DATA.map((d) => ({
@@ -127,7 +132,8 @@ export default function App() {
       <section id="hero" className="relative h-[72vh] min-h-[600px] overflow-hidden scroll-mt-14">
         <div className="absolute inset-0">
           <MapaJujuy departments={mapDepartments} selectedDeptId={selectedDeptId} activeFilter={activeFilter}
-            onSelect={(id) => { setSelectedDeptId(id); if (id) setChapter(1); }} view3d={view3d} onFeatures={setAreas} />
+            onSelect={(id) => { setSelectedDeptId(id); if (id) setChapter(1); }} view3d={view3d} onFeatures={setAreas}
+            scenes={sceneOpts} onScenePick={setPicked} onLevel={setLevel} />
         </div>
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-[#050d17] via-[#050d17]/55 to-transparent to-60%" />
         <div className="absolute inset-x-0 bottom-0 h-24 pointer-events-none bg-gradient-to-t from-[#050d17] to-transparent" />
@@ -169,6 +175,36 @@ export default function App() {
           ))}
           <span className="flex items-center gap-1.5 text-slate-400"><i className="w-2.5 h-2.5 rounded-full" style={{ background: SECTORS.servicios.color }} />Servicios</span>
         </div>
+
+        {/* controles de escenas productivas ilustrativas */}
+        <div className={`${glass} absolute left-1/2 -translate-x-1/2 bottom-6 rounded-xl px-3 py-2 hidden md:flex items-center gap-2 text-[11px] z-10`}>
+          <span className="text-slate-400 mr-1">Nivel {level} · {LEVEL_NAMES[level - 1]}</span>
+          {SCENE_TOGGLES.map(([k, label]) => (
+            <button key={k} onClick={() => setSceneOpts((o) => ({ ...o, [k]: !o[k] }))} aria-pressed={sceneOpts[k]}
+              className={`px-2.5 py-1 rounded-lg border transition ${sceneOpts[k] ? 'border-teal-300/70 text-teal-200 bg-teal-300/10' : 'border-white/15 text-slate-500'}`}>{label}</button>
+          ))}
+          <button onClick={() => setActiveFilter('todos')} className="px-2.5 py-1 rounded-lg border border-white/15 text-slate-300 hover:bg-white/5">Todos los sectores</button>
+        </div>
+        {level < 3 && !picked && (
+          <div className="absolute left-1/2 -translate-x-1/2 bottom-20 text-[11px] text-slate-300 bg-[#07111d]/70 rounded-lg px-3 py-1.5 pointer-events-none hidden md:block z-10">
+            Escenas ilustrativas: seleccioná Susques y acercate para ver las actividades
+          </div>
+        )}
+        {picked && (
+          <div className={`${glass} absolute left-1/2 -translate-x-1/2 bottom-20 w-[320px] max-w-[calc(100%-2rem)] rounded-xl p-3 text-xs z-20`}>
+            <div className="flex items-center justify-between mb-2">
+              <b className="text-sm">{picked.elemento}</b>
+              <button onClick={() => setPicked(null)} aria-label="Cerrar"><X className="w-3.5 h-3.5" /></button>
+            </div>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-slate-300">
+              <dt className="text-slate-500">Departamento</dt><dd>{JUJUY_DEPARTMENTS_DATA.find((d) => d.id === picked.deptId)?.name}</dd>
+              <dt className="text-slate-500">Sector</dt><dd>{SECTORS[picked.sector]?.label}</dd>
+              <dt className="text-slate-500">Actividad</dt><dd>{picked.actividad}</dd>
+              <dt className="text-slate-500">Representación</dt><dd className="text-amber-300">{picked.tipo}</dd>
+            </dl>
+            <p className="mt-2 text-[10px] text-slate-500 leading-snug">Escena ilustrativa: no representa establecimientos reales ni cantidades de trabajadores, producción o empleo. Los indicadores oficiales están en los paneles.</p>
+          </div>
+        )}
 
         {/* ficha flotante del departamento */}
         {dept && (

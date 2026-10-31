@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+import { createEscenasLayer, levelOf } from './escenas3d';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // GeoJSON real de los 16 departamentos de Jujuy (IGN/IDERA), en /public/data/
@@ -140,7 +141,11 @@ const featureArea = (g) => {
   return polys.reduce((t, p) => t + ringArea(p[0]) - p.slice(1).reduce((h, r) => h + ringArea(r), 0), 0);
 };
 
-export default function MapaJujuy({ departments, selectedDeptId, activeFilter, onSelect, view3d = true, onFeatures }) {
+export default function MapaJujuy({ departments, selectedDeptId, activeFilter, onSelect, view3d = true, onFeatures, scenes, onScenePick, onLevel }) {
+  const scenesRef = useRef(null);
+  const latest = useRef({});
+  latest.current = { scenes, activeFilter, selectedDeptId, onScenePick, onLevel };
+  const levelRef = useRef(0);
   const onFeaturesRef = useRef(onFeatures);
   onFeaturesRef.current = onFeatures;
   const prevView = useRef(view3d);
@@ -166,7 +171,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       bearing: -8,
       maxPitch: 75,
       minZoom: 5.2,
-      maxZoom: 13,
+      maxZoom: 15,
       attributionControl: false,
       style: {
         version: 8,
@@ -278,6 +283,21 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
           }
         });
 
+        // escenas productivas 3D (misma cámara y terreno que el mapa)
+        const escenas = createEscenasLayer({ onPick: (info) => latest.current.onScenePick?.(info) });
+        escenas.setGeometries(Object.fromEntries(gj.features.map((f) => [f.properties.deptId, f.geometry])));
+        escenas.setOptions(latest.current.scenes || {});
+        escenas.setFilter(latest.current.activeFilter);
+        escenas.setSelected(latest.current.selectedDeptId);
+        map.addLayer(escenas);
+        scenesRef.current = escenas;
+        map.on('click', (e) => { if (escenas.pick(e.point)) e.originalEvent.__sceneHit = true; });
+        const reportLevel = () => {
+          const lv = levelOf(map.getZoom());
+          if (lv !== levelRef.current) { levelRef.current = lv; latest.current.onLevel?.(lv); }
+        };
+        map.on('zoom', reportLevel); reportLevel();
+
         markersRef.current = gj.features.map((f) => {
           const el = document.createElement('button');
           el.type = 'button';
@@ -289,12 +309,14 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
         });
 
         map.on('click', 'deptos-fill', (e) => {
+          if (e.originalEvent.__sceneHit) return;
           const id = e.features?.[0]?.properties?.deptId;
           if (id) onSelectRef.current(id);
         });
         map.on('click', (e) => {
+          if (e.originalEvent.__sceneHit) return;
           const hit = map.queryRenderedFeatures(e.point, { layers: ['deptos-fill'] });
-          if (!hit.length) onSelectRef.current(null);
+          if (!hit.length) { onSelectRef.current(null); latest.current.onScenePick?.(null); }
         });
         map.on('mousemove', 'deptos-fill', (e) => {
           map.getCanvas().style.cursor = 'pointer';
@@ -339,12 +361,16 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       });
     };
     const applyAll = () => {
+      scenesRef.current?.setFilter(activeFilter);
       apply();
       markersRef.current.forEach((m) => m.el.classList.toggle('is-dim', activeFilter !== 'todos' && m.sector !== activeFilter));
     };
     if (readyRef.current) applyAll();
     else map.once('jujuy-ready', applyAll);
   }, [activeFilter]);
+
+  // --- Opciones de las escenas (personas, vehículos, instalaciones, animaciones) ---
+  useEffect(() => { scenesRef.current?.setOptions(scenes || {}); }, [scenes]);
 
   // --- Vista 3D / 2D ---
   useEffect(() => {
@@ -374,6 +400,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
         resetMapView(map);
       }
       markersRef.current.forEach((m) => m.el.classList.toggle('is-selected', m.id === selectedDeptId));
+      scenesRef.current?.setSelected(selectedDeptId);
       prevSelected.current = selectedDeptId;
     };
     if (readyRef.current) apply();

@@ -36,3 +36,10 @@ src/MapaJujuy.jsx   mapa MapLibre + relieve + cámara
 src/data.js         datos
 public/data/        acá va el GeoJSON
 ```
+
+## Escenas productivas 3D (piloto: Susques, minería y litio)
+- `src/escenas3d.js`: capa personalizada de MapLibre con three.js (misma cámara y terreno del mapa), InstancedMesh, niveles de detalle por zoom (8 / 10 / 12), culling y selección.
+- `src/escenasData.js`: definición de escenas. Para sumar un departamento, copiar una escena y cambiar deptId, sector, actividad y elementos.
+- `src/geo.js`: utilidades geográficas (punto interior del departamento).
+- Las escenas son ILUSTRATIVAS: no son establecimientos reales ni representan cantidades de trabajadores, producción o empleo.
+- Faltan los modelos GLB/GLTF (lista en `MODELOS_REQUERIDOS`, carpeta prevista `public/models/`). El piloto usa figuras procedurales animadas como reemplazo.
