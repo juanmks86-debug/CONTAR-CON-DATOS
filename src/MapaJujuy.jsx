@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
-import { createEscenasLayer, levelOf } from './escenas3d';
+import { createEscenasLayer, levelOf } from './components/Map3D/SceneManager';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // GeoJSON real de los 16 departamentos de Jujuy (IGN/IDERA), en /public/data/

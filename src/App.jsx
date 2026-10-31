@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import MapaJujuy from './MapaJujuy';
 import { JUJUY_DEPARTMENTS_DATA, PROVINCIAL_TOTALS } from './data';
+import { DEPARTMENTS_CONFIG } from './config/departmentsConfig';
 
 const SECTORS = {
   mineril:   { label: 'Minería y litio',     color: '#a855f7' },
@@ -201,6 +202,7 @@ export default function App() {
               <dt className="text-slate-500">Sector</dt><dd>{SECTORS[picked.sector]?.label}</dd>
               <dt className="text-slate-500">Actividad</dt><dd>{picked.actividad}</dd>
               <dt className="text-slate-500">Representación</dt><dd className="text-amber-300">{picked.tipo}</dd>
+              <dt className="text-slate-500">Fuente</dt><dd>{picked.validada ? picked.fuentes.join(', ') : 'Actividad sin validar con fuente oficial'}</dd>
             </dl>
             <p className="mt-2 text-[10px] text-slate-500 leading-snug">Escena ilustrativa: no representa establecimientos reales ni cantidades de trabajadores, producción o empleo. Los indicadores oficiales están en los paneles.</p>
           </div>
@@ -225,6 +227,12 @@ export default function App() {
               <h3 className="text-sm font-semibold mb-2">Actividades económicas principales</h3>
               <ul className="space-y-1.5 text-[13px] text-slate-300">
                 {activities.map((a) => <li key={a} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sector.color }} />{a}</li>)}
+              </ul>
+            </div>
+            <div className="border border-white/10 rounded-lg p-2.5">
+              <h3 className="text-[11px] font-semibold mb-1.5">Escenas 3D de este departamento <span className="text-amber-300 font-normal">(ilustrativas)</span></h3>
+              <ul className="text-[11px] text-slate-300 space-y-1">
+                {(DEPARTMENTS_CONFIG.find((c) => c.id === dept.id)?.actividades || []).map((act) => <li key={act.label} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 bg-amber-300" />{act.label}{!act.validada && <span className="text-slate-500"> · sin validar</span>}</li>)}
               </ul>
             </div>
             <div className="grid grid-cols-[1.25fr_1fr] gap-2">

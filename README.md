@@ -37,9 +37,21 @@ src/data.js         datos
 public/data/        acá va el GeoJSON
 ```
 
-## Escenas productivas 3D (piloto: Susques, minería y litio)
-- `src/escenas3d.js`: capa personalizada de MapLibre con three.js (misma cámara y terreno del mapa), InstancedMesh, niveles de detalle por zoom (8 / 10 / 12), culling y selección.
-- `src/escenasData.js`: definición de escenas. Para sumar un departamento, copiar una escena y cambiar deptId, sector, actividad y elementos.
-- `src/geo.js`: utilidades geográficas (punto interior del departamento).
-- Las escenas son ILUSTRATIVAS: no son establecimientos reales ni representan cantidades de trabajadores, producción o empleo.
-- Faltan los modelos GLB/GLTF (lista en `MODELOS_REQUERIDOS`, carpeta prevista `public/models/`). El piloto usa figuras procedurales animadas como reemplazo.
+## Escenas productivas 3D (16 departamentos, ilustrativas)
+Un único motor compartido (capa personalizada de MapLibre + three.js) con configuración por departamento.
+
+```
+src/config/departmentsConfig.js   los 16 departamentos: actividades, zoom, coordenadas verificadas, fuentes
+src/config/activitiesConfig.js    plantillas de escena, roles de personas, vehículos, modelos GLB requeridos
+src/components/Map3D/SceneManager.js        motor único (capa, culling, carga progresiva, selección)
+src/components/Map3D/ZoomController.js      niveles 1-4 y aparición progresiva según el zoom
+src/components/Map3D/InstallationManager.js instalaciones y caminos
+src/components/Map3D/VehicleManager.js      vehículos animados
+src/components/Map3D/CharacterManager.js    personas animadas
+src/geo.js                                  puntos interiores del departamento
+```
+- Las escenas son ILUSTRATIVAS: no son establecimientos reales ni representan trabajadores, producción o empleo.
+- Ninguna actividad está validada con fuente oficial (`validada: false`). Al validarla: completar `fuentes` y poner `true`.
+- Coordenadas verificadas: `anchor: [lng, lat]` y `anchorSource: 'fuente'` en departmentsConfig.js.
+- Para sumar una actividad nueva: crear una plantilla en activitiesConfig.js y referenciarla en el departamento.
+- Faltan los modelos GLB/GLTF (`MODELOS_REQUERIDOS`, carpeta prevista `public/models/`); mientras tanto se usan figuras procedurales.

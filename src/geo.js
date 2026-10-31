@@ -46,3 +46,28 @@ export const interiorPoint = (g, start) => {
   }
   return best || start;
 };
+
+// n puntos dentro del departamento, bien separados entre sí y alejados del borde (aprox.)
+export const spreadPoints = (g, n) => {
+  const first = interiorPoint(g, centroidOf(g));
+  const out = [first];
+  if (n <= 1) return out;
+  const pts = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).flatMap((p) => p[0]);
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const cands = [];
+  const m = 0.03; // ~3 km de margen respecto del borde
+  for (let i = 0; i <= 24; i++) for (let j = 0; j <= 24; j++) {
+    const c = [x0 + ((x1 - x0) * i) / 24, y0 + ((y1 - y0) * j) / 24];
+    if ([[0, 0], [m, 0], [-m, 0], [0, m], [0, -m]].every(([dx, dy]) => pointInGeometry([c[0] + dx, c[1] + dy], g))) cands.push(c);
+  }
+  while (out.length < n) {
+    let best = null, bs = -1;
+    for (const c of cands) {
+      const s = Math.min(...out.map((o) => Math.hypot(c[0] - o[0], c[1] - o[1])));
+      if (s > bs) { bs = s; best = c; }
+    }
+    out.push(best || [first[0] + 0.02 * out.length, first[1]]);
+  }
+  return out;
+};
