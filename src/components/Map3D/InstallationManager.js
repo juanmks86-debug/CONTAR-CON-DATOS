@@ -1,22 +1,24 @@
 import * as THREE from 'three';
-import { D, C, inst } from './utils';
+import { D, C, inst, geom } from './utils';
 
 // Instalaciones: cajas y cilindros instanciados (con color por instancia) + caminos.
 export function buildInstallations(def, rt, mk) {
-  const boxes = def.piezas.filter((p) => p.shape !== 'cyl');
-  const cyls = def.piezas.filter((p) => p.shape === 'cyl');
-  const mesh = (items, geo) => {
-    const m = inst(geo, mk('facilities', '#ffffff'), items.length);
-    items.forEach((p, i) => m.setColorAt(i, C.set(p.c)));
-    return m;
-  };
-  rt.inst = {
-    boxes: { items: boxes, mesh: mesh(boxes, new THREE.BoxGeometry(1, 1, 1)) },
-    cyls: { items: cyls, mesh: mesh(cyls, new THREE.CylinderGeometry(1, 1, 1, 16).rotateX(Math.PI / 2)) }
-  };
+  // un InstancedMesh por tipo de forma (caja, cilindro, cono) con color por instancia
+  const groups = {};
+  def.piezas.forEach((p) => {
+    const key = p.shape === 'cyl' ? `cyl@${p.top ?? 1}` : 'box';
+    (groups[key] ||= { top: p.top ?? 1, cyl: p.shape === 'cyl', items: [] }).items.push(p);
+  });
+  rt.inst = {};
+  for (const [key, g] of Object.entries(groups)) {
+    const geo = geom(`inst:${key}`, () => (g.cyl ? new THREE.CylinderGeometry(g.top, 1, 1, 16).rotateX(Math.PI / 2) : new THREE.BoxGeometry(1, 1, 1)));
+    const mesh = inst(geo, mk('facilities', '#ffffff'), g.items.length);
+    g.items.forEach((p, i) => mesh.setColorAt(i, C.set(p.c)));
+    rt.inst[key] = { items: g.items, mesh };
+  }
   rt.segs = def.caminos.flatMap((poly) => poly.slice(1).map((b, i) => [poly[i], b]));
-  rt.roads = inst(new THREE.BoxGeometry(1, 1, 1), mk('facilities', '#2b2f36'), rt.segs.length);
-  rt.groups.facilities.add(rt.inst.boxes.mesh, rt.inst.cyls.mesh, rt.roads);
+  rt.roads = inst(geom('box', () => new THREE.BoxGeometry(1, 1, 1)), mk('facilities', '#2b2f36'), rt.segs.length);
+  rt.groups.facilities.add(...Object.values(rt.inst).map((v) => v.mesh), rt.roads);
 }
 
 export function layoutInstallations(rt, s, elevDz) {
@@ -40,5 +42,5 @@ export function layoutInstallations(rt, s, elevDz) {
 
 export function installationPicks(rt, list) {
   for (const { items } of Object.values(rt.inst))
-    items.forEach((p) => list.push({ cat: 'facilities', x: p.x, y: p.y, z: p.dz || 0, h: p.h, elemento: p.label }));
+    items.forEach((p) => { if (p.pick !== false) list.push({ cat: 'facilities', x: p.x, y: p.y, z: p.dz || 0, h: p.h, elemento: p.label }); });
 }

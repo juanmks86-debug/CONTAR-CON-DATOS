@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { C, inst, setM, parentM, mkPath, at } from './utils';
+import { C, inst, setM, parentM, mkPath, at, geom } from './utils';
 import { VEHICLES } from '../../config/activitiesConfig';
 
 // Vehículos: un grupo por tipo; cada parte es un InstancedMesh con color propio.
@@ -8,11 +8,11 @@ export function buildVehicles(def, rt, mk) {
   def.vehiculos.forEach((v) => {
     (rt.vgroups[v.type] ||= { cfg: VEHICLES[v.type], list: [] }).list.push({ ...v, path: mkPath(def.caminos[v.path || 0]), dz: 0 });
   });
-  const wheelGeo = new THREE.CylinderGeometry(1, 1, 1, 14).rotateZ(Math.PI / 2);
+  const wheelGeo = geom('wheel', () => new THREE.CylinderGeometry(1, 1, 1, 14).rotateZ(Math.PI / 2));
   for (const g of Object.values(rt.vgroups)) {
     const n = g.list.length;
     g.meshes = g.cfg.parts.map((pt) => {
-      const m = inst(new THREE.BoxGeometry(1, 1, 1), mk('vehicles', '#ffffff'), n);
+      const m = inst(geom('box', () => new THREE.BoxGeometry(1, 1, 1)), mk('vehicles', '#ffffff'), n);
       for (let i = 0; i < n; i++) m.setColorAt(i, C.set(pt.c));
       return m;
     });

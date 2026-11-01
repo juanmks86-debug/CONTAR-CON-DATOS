@@ -9,6 +9,6 @@ button:focus-visible { outline: 2px solid #5eead4; outline-offset: 2px; }
 .maplibregl-ctrl-group { background: rgba(5,13,23,.9); border: 1px solid rgba(94,234,212,.25); }
 .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1) brightness(1.4); }
 .map-reset-control { color: #b9f4f3; background: transparent; border: 0; font-size: 18px; line-height: 1; cursor: pointer; }
-.dept-label { background: transparent; border: 0; padding: 2px 4px; cursor: pointer; white-space: nowrap; color: #e8fbfa; font-size: 11px; font-weight: 600; text-shadow: 0 0 3px #020617, 0 0 6px #020617, 0 0 10px #020617; transition: opacity .2s; }
+.dept-label { background: transparent; border: 0; padding: 2px 4px; pointer-events: none; /* los clics pasan al mapa: seleccionan el departamento o un elemento de la escena */ white-space: nowrap; color: #e8fbfa; font-size: 11px; font-weight: 600; text-shadow: 0 0 3px #020617, 0 0 6px #020617, 0 0 10px #020617; transition: opacity .2s; }
 .dept-label.is-dim { opacity: .25; }
 .dept-label.is-selected { color: #fff; font-size: 13px; }

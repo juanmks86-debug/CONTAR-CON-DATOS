@@ -1,57 +1,57 @@
-# Matriz Productiva Departamental de Jujuy
+# Matriz Productiva Departamental de Jujuy (2015–2026)
 
-React + Vite + Tailwind + MapLibre GL JS (relieve 3D con Terrain DEM).
+React + Vite + Tailwind + MapLibre GL JS (relieve 3D) + three.js (escenas productivas ilustrativas).
 
-## Cómo correrlo
 ```
 npm install
 npm run dev
 ```
-Abrí la dirección que muestra la terminal (normalmente http://localhost:5173).
-
-## Falta un archivo: el GeoJSON de los 16 departamentos
-Ya incluido: `public/data/jujuy-departamentos.geojson` (IGN, simplificado).
-
-1. Bajá la capa de departamentos del IGN (Instituto Geográfico Nacional) o de IDERA.
-2. Abrila en https://mapshaper.org y dejá solo los 16 departamentos de Jujuy.
-3. Simplificala un poco (botón "Simplify") y exportala como GeoJSON.
-
-Requisitos del archivo:
-- Una propiedad con el nombre del departamento (`nombre`, `nam`, `fna`, `departamen`, `departamento` o `name`).
-- Si el archivo trae un campo de provincia, se usan solo los de Jujuy. Si no lo trae,
-  recortalo a Jujuy antes: hay departamentos con el mismo nombre en otras provincias
-  (San Pedro, San Antonio, El Carmen, etc.).
-- Si no se encuentran los 16 departamentos, el mapa muestra un aviso en pantalla.
-
-## Datos
-`src/data.js` tiene datos ILUSTRATIVOS. Antes de presentar, reemplazalos por datos con
-fuente real y actualizá el pie de página y la memoria descriptiva en `src/App.jsx`.
 
 ## Estructura
 ```
-index.html
-src/main.jsx        entrada
-src/App.jsx         interfaz (filtros, panel, gráficos)
-src/MapaJujuy.jsx   mapa MapLibre + relieve + cámara
-src/data.js         datos
-public/data/        acá va el GeoJSON
+src/App.jsx                         interfaz (mapa a pantalla completa, fichas, indicadores, capítulos)
+src/MapaJujuy.jsx                   mapa MapLibre: relieve, límites, etiquetas, cámara, selección
+src/components/Map3D/               motor 3D único y compartido (módulos JS, no componentes React)
+  SceneManager.js                   capa personalizada de MapLibre + three.js (misma cámara y terreno)
+  CharacterManager.js               personas animadas (instanciadas)
+  VehicleManager.js                 vehículos animados
+  InstallationManager.js            instalaciones y caminos
+  ZoomController.js                 niveles de detalle por zoom
+src/config/departmentsConfig.js     los 16 departamentos: actividades, fuentes, anclas, zoom, activación
+src/config/activitiesConfig.js      plantillas de escena, roles y vehículos
+src/data.js                         valores económicos (ILUSTRATIVOS, sin fuente verificada)
+src/data/indicators.js              metadatos de indicadores + conciliación provincial/departamental
+src/data/sources.js                 fuentes oficiales candidatas (ninguna consultada todavía)
+scripts/check-data.mjs              informe de calidad de datos
+tests/regresion/                    pruebas del motor (sin navegador)
+tests/e2e/                          prueba de extremo a extremo en navegador (opcional)
+public/data/jujuy-departamentos.geojson   límites oficiales (IGN)
 ```
 
-## Escenas productivas 3D (16 departamentos, ilustrativas)
-Un único motor compartido (capa personalizada de MapLibre + three.js) con configuración por departamento.
+## Escenas 3D: reglas
+- **Un solo motor** para los 16 departamentos. Cada departamento aporta configuración, no código 3D.
+- Las escenas son **ilustrativas**: no son establecimientos reales ni representan cantidades de trabajadores, producción o empleo.
+- **Sólo está activa la escena de Susques (minería)**, heredada del piloto original (`piloto: true`). Las otras escenas están definidas pero **desactivadas**.
+- Una actividad se activa únicamente si tiene `validada: true` **y** al menos una fuente en `fuentes` (ver `departmentsConfig.js`). No hay otra forma de encenderla.
+- No se cargan simultáneamente las escenas: se construyen al verse y se descargan tras 20 s fuera de cámara. Las geometrías se comparten entre escenas.
 
-```
-src/config/departmentsConfig.js   los 16 departamentos: actividades, zoom, coordenadas verificadas, fuentes
-src/config/activitiesConfig.js    plantillas de escena, roles de personas, vehículos, modelos GLB requeridos
-src/components/Map3D/SceneManager.js        motor único (capa, culling, carga progresiva, selección)
-src/components/Map3D/ZoomController.js      niveles 1-4 y aparición progresiva según el zoom
-src/components/Map3D/InstallationManager.js instalaciones y caminos
-src/components/Map3D/VehicleManager.js      vehículos animados
-src/components/Map3D/CharacterManager.js    personas animadas
-src/geo.js                                  puntos interiores del departamento
-```
-- Las escenas son ILUSTRATIVAS: no son establecimientos reales ni representan trabajadores, producción o empleo.
-- Ninguna actividad está validada con fuente oficial (`validada: false`). Al validarla: completar `fuentes` y poner `true`.
-- Coordenadas verificadas: `anchor: [lng, lat]` y `anchorSource: 'fuente'` en departmentsConfig.js.
-- Para sumar una actividad nueva: crear una plantilla en activitiesConfig.js y referenciarla en el departamento.
-- Faltan los modelos GLB/GLTF (`MODELOS_REQUERIDOS`, carpeta prevista `public/models/`); mientras tanto se usan figuras procedurales.
+### Activar la escena de un departamento
+1. Validar la actividad con una fuente oficial.
+2. En `departmentsConfig.js`: poner `validada: true` y completar `fuentes` (organismo, publicación, fecha de consulta).
+3. Si hay coordenadas verificadas del establecimiento, cargar `anchor: [lng, lat]` (debe caer dentro del departamento).
+4. Revisar la escena en el mapa. Si falta un modelo propio, usar o crear una plantilla en `activitiesConfig.js`.
+
+## Datos e indicadores
+- Cada indicador declara **unidad, escala (departamental o provincial, nunca mezcladas), año y condición** (`observado`, `estimado` o `parcial`) y su **fuente** (`src/data/indicators.js`).
+- Los valores actuales **no tienen fuente verificada** (`validacion: 'sin_validar'`). El año 2026 es **parcial** (año en curso).
+- `npm run check:data` informa indicadores sin validar, la conciliación provincial vs. suma de departamentos y controles de coherencia (`-- --strict` falla si hay datos sin validar).
+- Para validar un indicador: cargar el valor real, completar `fuente`, fijar `condicion` en cada punto y poner `validacion: 'validado'`.
+
+## Pruebas
+- `npm run test:regresion`: el motor modular dibuja y selecciona exactamente igual que el piloto original de Susques.
+- `npm run test:descarga`: las escenas lejanas se descargan y se reconstruyen.
+- `npm run test:cpu`: costo de CPU del motor por cuadro.
+- `tests/e2e/`: ver `tests/e2e/LEEME.md`.
+
+## Modelos 3D pendientes
+El piloto usa figuras procedurales animadas. Los modelos GLB/GLTF faltantes están listados en `MODELOS_REQUERIDOS` (`activitiesConfig.js`), carpeta prevista `public/models/`.

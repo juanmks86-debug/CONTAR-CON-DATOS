@@ -31,7 +31,8 @@ export const VEHICLES = {
 };
 
 const box = (x, y, w, d, h, c, label) => ({ shape: 'box', x, y, w, d, h, c, label });
-const cyl = (x, y, r, h, c, label) => ({ shape: 'cyl', x, y, w: r, d: r, h, c, label });
+const cyl = (x, y, r, h, c, label, extra = {}) => ({ shape: 'cyl', x, y, w: r, d: r, h, c, label, ...extra });
+const chim = (x, y, r, h) => cyl(x, y, r, h, '#c9ced6', 'Chimenea', { top: 0.9 / 1.1, pick: false }); // cono: radio superior 0,9 / inferior 1,1 (como el piloto)
 const flat = (x, y, w, d, c, label) => box(x, y, w, d, 0.3, c, label);
 const loop = [[-32, -32], [-32, 32], [32, 32], [32, -32], [-32, -32]];
 const walk = [[-8, -6], [8, -6], [8, -12], [-8, -12], [-8, -6]];
@@ -39,10 +40,12 @@ const V = (type, phase, speed = 6) => ({ type, path: 0, speed, phase });
 const work = (role, x, y, h, minLevel) => ({ role, mode: 'work', x, y, h, minLevel });
 const stroll = (role, phase, minLevel) => ({ role, mode: 'walk', phase, speed: 1.2, minLevel });
 const base = { caminos: [loop], peatonal: walk };
+// Circuito de camiones del piloto de Susques (se conserva idéntico)
+const loopMineria = [[-30, -32], [-30, 28], [38, 28], [38, -32], [-30, -32]];
 
 export const TEMPLATES = {
-  mineria: () => ({ ...base,
-    piezas: [box(0, 6, 16, 10, 6, '#8d98a6', 'Planta de procesamiento'), cyl(5, 6, 0.9, 12, '#c9ced6', 'Chimenea'),
+  mineria: () => ({ ...base, caminos: [loopMineria],
+    piezas: [box(0, 6, 16, 10, 6, '#8d98a6', 'Planta de procesamiento'), chim(5, 6, 1.1, 12),
       ...[10, 3, -4].map((y) => cyl(-12, y, 2.6, 5, '#d7dde4', 'Tanque de almacenamiento')),
       flat(22, -14, 20, 12, '#3fb8a8', 'Piletas de evaporación (representación de salar)'), flat(22, 0, 20, 12, '#59c9b5', 'Piletas de evaporación (representación de salar)'),
       flat(-2, -22, 18, 10, '#2f9e94', 'Piletas de evaporación (representación de salar)')],
@@ -59,7 +62,7 @@ export const TEMPLATES = {
       stroll('Técnico en energía solar', 5), work('Técnico en energía solar', -2, -26, 1.5, 4), stroll('Técnico en energía solar', 25, 4)] }),
 
   azucarera: () => ({ ...base,
-    piezas: [box(0, 12, 26, 14, 8, '#a38b6b', 'Planta industrial azucarera'), cyl(-8, 12, 1.2, 16, '#c9ced6', 'Chimenea'), cyl(8, 12, 1.2, 14, '#c9ced6', 'Chimenea'),
+    piezas: [box(0, 12, 26, 14, 8, '#a38b6b', 'Planta industrial azucarera'), cyl(-8, 12, 1.2, 16, '#c9ced6', 'Chimenea', { pick: false }), cyl(8, 12, 1.2, 14, '#c9ced6', 'Chimenea', { pick: false }),
       flat(-17, -16, 26, 16, '#7fb23c', 'Cañaveral (representación)'), flat(17, -16, 26, 16, '#6fa334', 'Cañaveral (representación)'), flat(0, -30, 40, 8, '#86b845', 'Cañaveral (representación)')],
     vehiculos: [V('tractor', 0, 4), V('tractor', 128, 4), V('camionCarga', 64, 5)],
     personas: [work('Cosechador', -17, -16, 0.5), work('Cosechador', 17, -16, 2), work('Cosechador', 0, -28, 1), work('Operario industrial', -12, 4, 0), work('Operario industrial', 10, 4, 0),
@@ -93,7 +96,7 @@ export const TEMPLATES = {
       stroll('Personal administrativo', 7, 4), work('Comerciante', 0, 8, 3.1, 4)] }),
 
   metalurgica: () => ({ ...base,
-    piezas: [box(0, 10, 30, 16, 9, '#7a828d', 'Nave industrial'), cyl(-10, 10, 1.4, 18, '#c9ced6', 'Chimenea'), cyl(10, 10, 1.4, 16, '#c9ced6', 'Chimenea'),
+    piezas: [box(0, 10, 30, 16, 9, '#7a828d', 'Nave industrial'), cyl(-10, 10, 1.4, 18, '#c9ced6', 'Chimenea', { pick: false }), cyl(10, 10, 1.4, 16, '#c9ced6', 'Chimenea', { pick: false }),
       cyl(-22, -12, 3, 7, '#d7dde4', 'Tanque'), cyl(-22, -2, 3, 7, '#d7dde4', 'Tanque'), flat(10, -16, 30, 14, '#9ca3ad', 'Patio de acopio')],
     vehiculos: [V('camion', 0, 5), V('camionCarga', 128, 5)],
     personas: [work('Operario industrial', -6, -1, 0), work('Operario industrial', 6, -1, 0), work('Operario industrial', 10, -16, 1.2), stroll('Operario industrial', 0), stroll('Operario industrial', 22),

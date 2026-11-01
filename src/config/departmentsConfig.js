@@ -11,10 +11,13 @@
 import { TEMPLATES } from './activitiesConfig';
 
 const sector = (tipo) => ({ mineria: 'mineril', solar: 'mineril', azucarera: 'agro', agricultura: 'agro', ganaderia: 'agro', turismo: 'turismo', comercio: 'servicios', metalurgica: 'servicios' }[tipo]);
-const a = (tipo, label, params) => ({ tipo, label, params, sector: sector(tipo), validada: false, fuentes: [] });
+// `piloto: true` => escena heredada del piloto original (Susques, minería), activa pese a no estar validada.
+// Regla: ninguna otra actividad se activa hasta tener `validada: true` y al menos una fuente en `fuentes`.
+const a = (tipo, label, params, extra = {}) => ({ tipo, label, params, sector: sector(tipo), validada: false, fuentes: [], piloto: false, ...extra });
+const activa = (act, fuentesDepto = []) => act.piloto || (act.validada && [...fuentesDepto, ...act.fuentes].length > 0);
 
 export const DEPARTMENTS_CONFIG = [
-  { id: 'susques', nombre: 'Susques', actividades: [a('mineria', 'Minería de litio: extracción y procesamiento'), a('solar', 'Energía solar')] },
+  { id: 'susques', nombre: 'Susques', actividades: [a('mineria', 'Minería de litio: extracción y procesamiento', undefined, { piloto: true }), a('solar', 'Energía solar')] },
   { id: 'cochinoca', nombre: 'Cochinoca', actividades: [a('mineria', 'Minería de litio (salares)'), a('comercio', 'Comercio y logística')] },
   { id: 'rinconada', nombre: 'Rinconada', actividades: [a('mineria', 'Minería polimetálica y proyectos de litio')] },
   { id: 'santa_catalina', nombre: 'Santa Catalina', actividades: [a('ganaderia', 'Ganadería camélida')] },
@@ -32,11 +35,11 @@ export const DEPARTMENTS_CONFIG = [
   { id: 'belgrano', nombre: 'Doctor Manuel Belgrano', actividades: [a('comercio', 'Comercio, administración y servicios')] }
 ].map((d) => ({ zoom: null, anchor: null, anchorSource: 'ilustrativa', fuentes: [], ...d }));
 
-// Definiciones de escena listas para el motor (una por actividad)
+// Definiciones de escena listas para el motor (una por actividad). Sólo las `activa` se dibujan.
 export const SCENE_DEFS = DEPARTMENTS_CONFIG.flatMap((d) =>
   d.actividades.map((act, index) => ({
     id: `${d.id}-${act.tipo}-${index}`, deptId: d.id, sector: act.sector, actividad: act.label,
-    validada: act.validada, fuentes: [...d.fuentes, ...act.fuentes], zoom: d.zoom, anchor: d.anchor, index, count: d.actividades.length,
+    validada: act.validada, activa: activa(act, d.fuentes), fuentes: [...d.fuentes, ...act.fuentes], zoom: d.zoom, anchor: d.anchor, index, count: d.actividades.length,
     ...TEMPLATES[act.tipo](act.params)
   }))
 );

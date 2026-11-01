@@ -4,8 +4,10 @@ import {
   Pickaxe, TrendingUp, Users, Wheat, X
 } from 'lucide-react';
 import MapaJujuy from './MapaJujuy';
+import { indicadorProvincial, indicadorDepartamental, ultimo, estadoDe, conciliacion, controlCrecimiento } from './data/indicators';
+import { FUENTES_CANDIDATAS } from './data/sources';
 import { JUJUY_DEPARTMENTS_DATA, PROVINCIAL_TOTALS } from './data';
-import { DEPARTMENTS_CONFIG } from './config/departmentsConfig';
+import { DEPARTMENTS_CONFIG, SCENE_DEFS } from './config/departmentsConfig';
 
 const SECTORS = {
   mineril:   { label: 'Minería y litio',     color: '#a855f7' },
@@ -232,7 +234,7 @@ export default function App() {
             <div className="border border-white/10 rounded-lg p-2.5">
               <h3 className="text-[11px] font-semibold mb-1.5">Escenas 3D de este departamento <span className="text-amber-300 font-normal">(ilustrativas)</span></h3>
               <ul className="text-[11px] text-slate-300 space-y-1">
-                {(DEPARTMENTS_CONFIG.find((c) => c.id === dept.id)?.actividades || []).map((act) => <li key={act.label} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 bg-amber-300" />{act.label}{!act.validada && <span className="text-slate-500"> · sin validar</span>}</li>)}
+                {(DEPARTMENTS_CONFIG.find((c) => c.id === dept.id)?.actividades || []).map((act) => <li key={act.label} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 bg-amber-300" />{act.label}{!act.validada && <span className="text-slate-500"> · sin validar</span>}{!SCENE_DEFS.find((d) => d.deptId === dept.id && d.actividad === act.label)?.activa && <span className="text-slate-500"> · escena desactivada</span>}</li>)}
               </ul>
             </div>
             <div className="grid grid-cols-[1.25fr_1fr] gap-2">
@@ -249,6 +251,7 @@ export default function App() {
                 <h3 className="text-[11px] font-semibold flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Empleo registrado</h3>
                 <div className="text-xl font-bold mt-2">{fmt(row.empleo)}</div>
                 <div className="text-[10px] text-slate-400">puestos de trabajo</div>
+                <div className="text-[9px] text-amber-300/80 leading-tight mt-0.5">{LATEST} parcial · departamental · ilustrativo</div>
                 {empChange !== null && <div className="text-[11px] text-teal-300 mt-1">↑ {empChange >= 0 ? '+' : ''}{empChange.toFixed(0)}% vs. 2015</div>}
               </div>
             </div>
@@ -265,17 +268,22 @@ export default function App() {
           <h3 className="text-sm font-semibold mb-3">Indicadores provinciales <span className="text-slate-400 font-normal">({LATEST})</span></h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-2 gap-2">
             {[
-              [TrendingUp, 'Crecimiento PBI', PROVINCIAL_TOTALS.pbiGrowth, '#2dd4bf'],
-              [Globe2, 'Exportaciones', PROVINCIAL_TOTALS.totalExports, '#a855f7'],
-              [Users, 'Empleo registrado', PROVINCIAL_TOTALS.totalEmployment, '#10b981'],
-              [Layers, 'Empresas y Pymes', PROVINCIAL_TOTALS.totalSmes, '#f59e0b']
-            ].map(([Icon, label, value, color]) => (
-              <div key={label} className="border border-white/10 rounded-lg p-3 bg-[#07111d]/60">
-                <Icon className="w-4 h-4 mb-2" style={{ color }} />
-                <div className="text-[10px] text-slate-400">{label}</div>
-                <div className="text-lg font-bold" style={{ color }}>{value}</div>
-              </div>
-            ))}
+              [TrendingUp, 'Crecimiento PBI', PROVINCIAL_TOTALS.pbiGrowth, '#2dd4bf', 'crecimiento_pbi'],
+              [Globe2, 'Exportaciones', PROVINCIAL_TOTALS.totalExports, '#a855f7', 'exportaciones'],
+              [Users, 'Empleo registrado', PROVINCIAL_TOTALS.totalEmployment, '#10b981', 'empleo_registrado'],
+              [Layers, 'Empresas y Pymes', PROVINCIAL_TOTALS.totalSmes, '#f59e0b', 'pymes']
+            ].map(([Icon, label, value, color, indId]) => {
+              const meta = indicadorProvincial(indId); const pt = ultimo(meta);
+              return (
+                <div key={label} className="border border-white/10 rounded-lg p-3 bg-[#07111d]/60" title={`${meta.nombre} · ${meta.unidad} · escala ${meta.escala} · ${pt.anio}${pt.condicion ? ' (' + pt.condicion + ')' : ''} · ${estadoDe(meta)}`}>
+                  <Icon className="w-4 h-4 mb-2" style={{ color }} />
+                  <div className="text-[10px] text-slate-400">{label}</div>
+                  <div className="text-lg font-bold" style={{ color }}>{value}</div>
+                  <div className="text-[9px] text-slate-500 leading-tight mt-1">{pt.anio} · {pt.condicion || 'sin condición'} · {meta.escala}</div>
+                  <div className="text-[9px] text-amber-300/80 leading-tight">{estadoDe(meta)}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
         <div className={`${card} p-4`}>
@@ -325,15 +333,30 @@ export default function App() {
 
       {showDoc && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && setShowDoc(false)}>
-          <div className="bg-[#0a1624] border border-white/15 rounded-xl max-w-lg w-full p-6">
+          <div className="bg-[#0a1624] border border-white/15 rounded-xl max-w-2xl w-full p-6">
             <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
               <h3 className="font-bold flex items-center gap-2"><FileText className="w-4 h-4 text-teal-300" /> Fuentes y metodología</h3>
               <button onClick={() => setShowDoc(false)} aria-label="Cerrar"><X className="w-4 h-4" /></button>
             </div>
-            <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
-              <p><b className="text-teal-300">Cobertura.</b> Matriz productiva de los 16 departamentos de Jujuy, 2015–2026.</p>
+            <div className="space-y-3 text-xs text-slate-300 leading-relaxed max-h-[60vh] overflow-y-auto pr-1">
+              <p><b className="text-teal-300">Cobertura.</b> Matriz productiva de los 16 departamentos de Jujuy, 2015–2026. Los datos de {LATEST} son <b>parciales</b>: el año está en curso.</p>
               <p><b className="text-teal-300">Territorio.</b> Límites departamentales: IGN. La superficie se calcula a partir de esos límites. Relieve: Terrain Tiles (AWS). Imagen satelital: Esri, Maxar, Earthstar Geographics.</p>
-              <p><b className="text-teal-300">Datos económicos.</b> Completar con cada fuente real (organismo, archivo, fecha) e indicar qué valores son estimaciones propias y cómo se calcularon. Altitud y población se muestran como “No disponible” hasta incorporar su fuente.</p>
+              <p><b className="text-teal-300">Datos económicos.</b> Todos los valores son <b>ilustrativos y sin fuente verificada</b>. Cada indicador declara unidad, escala geográfica (departamental o provincial, nunca mezcladas), año y condición (observado, estimado o parcial) en <code>src/data/indicators.js</code>. Altitud y población figuran como “No disponible”.</p>
+              <p><b className="text-teal-300">Escenas 3D.</b> Son representaciones ilustrativas: no son establecimientos reales ni indican cantidades de trabajadores, producción o empleo. Sólo está activa la escena de Susques; las demás se activan únicamente cuando su actividad esté validada con fuente.</p>
+              <div>
+                <b className="text-teal-300">Fuentes oficiales candidatas</b> <span className="text-slate-500">(ninguna consultada todavía)</span>
+                <ul className="mt-1 space-y-0.5">{FUENTES_CANDIDATAS.map((f) => <li key={f.id} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 bg-slate-500" />{f.organismo} <span className="text-slate-500">· {f.accedida ? 'consultada' : 'sin consultar'}</span></li>)}</ul>
+              </div>
+              <div>
+                <b className="text-teal-300">Conciliación provincial vs. suma departamental</b>
+                <table className="w-full mt-1 text-[11px]"><thead className="text-slate-500"><tr><th className="text-left font-normal">Indicador</th><th className="text-right font-normal">Año</th><th className="text-right font-normal">Provincial</th><th className="text-right font-normal">Suma 16 dptos.</th><th className="text-right font-normal">Dif.</th></tr></thead>
+                  <tbody>{conciliacion().filter((f) => f.id === 'empleo_registrado' || f.id === 'participacion_pbi' || f.id === 'exportaciones' || f.id === 'pymes').map((f) => (
+                    <tr key={f.id + f.anio} className={f.concilia ? '' : 'text-amber-200'}><td>{f.nombre}</td><td className="text-right">{f.anio}</td><td className="text-right">{f.provincial.toLocaleString('es-AR')}</td><td className="text-right">{f.sumaDeptos.toLocaleString('es-AR')}</td><td className="text-right">{f.diferencia > 0 ? '+' : ''}{f.diferencia.toLocaleString('es-AR')}</td></tr>))}</tbody></table>
+                <p className="mt-1 text-slate-500">Los totales provinciales fueron cargados a mano y no se calculan sumando departamentos; la diferencia cambia de signo según el año, por lo que no se explica por empleo “no asignado”. No se corrigieron: se resuelve al incorporar la fuente oficial.</p>
+              </div>
+              {controlCrecimiento().some((c) => !c.coincide) && (
+                <p><b className="text-teal-300">Control de coherencia.</b> El crecimiento de empleo declarado no coincide con el calculado desde la serie en: {controlCrecimiento().filter((c) => !c.coincide).map((c) => `${JUJUY_DEPARTMENTS_DATA.find((d) => d.id === c.deptId)?.name} (${c.declarado}% vs ${c.calculado}%)`).join(', ')}.</p>
+              )}
             </div>
             <button onClick={() => setShowDoc(false)} className="mt-5 ml-auto block border border-teal-500/60 text-teal-200 px-4 py-2 rounded-lg text-xs hover:bg-teal-500/10">Cerrar</button>
           </div>

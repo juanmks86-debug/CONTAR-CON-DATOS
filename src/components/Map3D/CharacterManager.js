@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { C, inst, setM, parentM, mkPath, at } from './utils';
+import { C, inst, setM, parentM, mkPath, at, geom } from './utils';
 import { ROLES } from '../../config/activitiesConfig';
 
 // Personas procedurales animadas (reemplazo hasta contar con modelos GLB: ver MODELOS_REQUERIDOS).
@@ -7,7 +7,7 @@ import { ROLES } from '../../config/activitiesConfig';
 export function buildCharacters(def, rt, mk) {
   const people = [...def.personas].sort((a, b) => (a.minLevel || 0) - (b.minLevel || 0));
   const n = people.length;
-  const part = (w, d, h, oz, color) => inst(new THREE.BoxGeometry(w, d, h).translate(0, 0, oz), mk('people', color), n);
+  const part = (w, d, h, oz, color) => inst(geom(`pp:${w},${d},${h},${oz}`, () => new THREE.BoxGeometry(w, d, h).translate(0, 0, oz)), mk('people', color), n);
   rt.ppl = {
     legL: part(0.2, 0.22, 0.85, -0.425, '#2c3e66'), legR: part(0.2, 0.22, 0.85, -0.425, '#2c3e66'),
     torso: part(0.5, 0.28, 0.62, 0.31, '#ffffff'),

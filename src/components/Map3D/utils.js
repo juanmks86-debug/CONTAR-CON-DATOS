@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 
 export const D = new THREE.Object3D();
+// Geometrías compartidas entre todas las escenas (no se duplican por departamento)
+const GEO = new Map();
+export const geom = (key, make) => { if (!GEO.has(key)) GEO.set(key, make()); return GEO.get(key); };
+export const disposeGeometries = () => { GEO.forEach((g) => g.dispose()); GEO.clear(); };
 export const Pm = new THREE.Matrix4();
 export const Fm = new THREE.Matrix4();
 export const C = new THREE.Color();

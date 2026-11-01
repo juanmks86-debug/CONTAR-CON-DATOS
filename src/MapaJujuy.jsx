@@ -213,6 +213,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       }
     });
     mapRef.current = map;
+    if (import.meta.env.VITE_EXPOSE_MAP) window.__map = map; // sólo para pruebas automáticas
 
     const resizeObserver = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => map.resize())
@@ -291,6 +292,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
         escenas.setSelected(latest.current.selectedDeptId);
         map.addLayer(escenas);
         scenesRef.current = escenas;
+        if (import.meta.env.VITE_EXPOSE_MAP) window.__escenas = escenas;
         map.on('click', (e) => { if (escenas.pick(e.point)) e.originalEvent.__sceneHit = true; });
         const reportLevel = () => {
           const lv = levelOf(map.getZoom());

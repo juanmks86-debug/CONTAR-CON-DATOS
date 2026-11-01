@@ -6,11 +6,15 @@ import maplibregl from 'maplibre-gl';
 import { SCENE_DEFS } from '../../config/departmentsConfig';
 import { centroidOf, spreadPoints } from '../../geo';
 import { LEVEL_ZOOM, levelOf, sceneScale, fades } from './ZoomController';
+import { disposeGeometries } from './utils';
 import { buildInstallations, layoutInstallations, installationPicks } from './InstallationManager';
 import { buildVehicles, updateVehicles } from './VehicleManager';
 import { buildCharacters, updateCharacters } from './CharacterManager';
 
 export { levelOf };
+const UNLOAD_S = 20;
+const L = new THREE.Matrix4(), SCALE_V = new THREE.Vector3();
+const disposeRt = (rt) => rt.scene.traverse((o) => { o.material?.dispose?.(); o.dispose?.(); }); // las geometrías son compartidas
 const group = (sector) => (sector === 'servicios' ? 'turismo' : sector); // "Turismo y servicios" comparten filtro
 
 export function createEscenasLayer({ onPick }) {
@@ -36,7 +40,7 @@ export function createEscenasLayer({ onPick }) {
     const c = anchorOf(def);
     const rt = {
       def, lng0: c[0], lat0: c[1], elev0: 0, frame: 0, lastZ: -1, scene: new THREE.Scene(), mvp: new THREE.Matrix4(),
-      pick: [], vis: {}, mats: { facilities: [], vehicles: [], people: [] },
+      pick: [], vis: {}, lastSeen: performance.now() / 1000, mats: { facilities: [], vehicles: [], people: [] },
       groups: { facilities: new THREE.Group(), vehicles: new THREE.Group(), people: new THREE.Group() }
     };
     rt.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
@@ -52,7 +56,7 @@ export function createEscenasLayer({ onPick }) {
     return rt;
   }
 
-  const active = () => SCENE_DEFS.filter((d) => st.geoms[d.deptId]
+  const active = () => SCENE_DEFS.filter((d) => d.activa && st.geoms[d.deptId]
     && (st.filter === 'todos' || st.filter === group(d.sector)) && (!st.selected || st.selected === d.deptId));
 
   const layer = {
@@ -66,6 +70,9 @@ export function createEscenasLayer({ onPick }) {
       const matrix = arg?.defaultProjectionData?.mainMatrix ?? arg;
       const z = map.getZoom();
       lastActive = [];
+      const now = performance.now() / 1000;
+      // memoria: se descartan las escenas que no se ven hace más de UNLOAD_S segundos
+      rts.forEach((r, id) => { if (now - r.lastSeen > UNLOAD_S) { disposeRt(r); rts.delete(id); } });
       if (z < LEVEL_ZOOM[0] - 0.3) return;
       const lv = levelOf(z), s = sceneScale(z), t = performance.now() / 1000;
       const W = map.getCanvas().clientWidth, H = map.getCanvas().clientHeight;
@@ -77,11 +84,11 @@ export function createEscenasLayer({ onPick }) {
         if (p.x < -900 || p.y < -900 || p.x > W + 900 || p.y > H + 900) continue; // culling: fuera de cámara
         let rt = rts.get(def.id);
         if (!rt) { rt = build(def); rts.set(def.id, rt); } // carga progresiva: sólo lo que se ve
-        if (rt.frame % 4 === 0 || Math.abs(z - rt.lastZ) > 0.01) {
-          const e = map.queryTerrainElevation([rt.lng0, rt.lat0]);
-          rt.elev0 = e == null ? 0 : e;
-          layoutInstallations(rt, s, elevDz); rt.lastZ = z;
-        }
+        // queryTerrainElevation devuelve la altura RELATIVA al centro de la pantalla (así posiciona MapLibre los objetos 3D
+        // personalizados): cambia en cada cuadro al mover la cámara, por eso el ancla se muestrea siempre.
+        const e = map.queryTerrainElevation([rt.lng0, rt.lat0]);
+        rt.elev0 = e == null ? 0 : e;
+        if (rt.frame % 4 === 0 || Math.abs(z - rt.lastZ) > 0.01) { layoutInstallations(rt, s, elevDz); rt.lastZ = z; }
         const ops = fades(z, def.zoom || LEVEL_ZOOM);
         for (const cat of Object.keys(ops)) {
           rt.mats[cat].forEach((m) => { m.opacity = ops[cat]; });
@@ -94,16 +101,16 @@ export function createEscenasLayer({ onPick }) {
         updateCharacters(rt, t, st.opts.animate, s, elevDz, list, lv);
         const mc = maplibregl.MercatorCoordinate.fromLngLat([rt.lng0, rt.lat0], rt.elev0);
         const sc = mc.meterInMercatorCoordinateUnits() * s;
-        const L = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(sc, -sc, sc));
+        L.makeTranslation(mc.x, mc.y, mc.z).scale(SCALE_V.set(sc, -sc, sc));
         camera.projectionMatrix.fromArray(matrix).multiply(L);
         rt.mvp.copy(camera.projectionMatrix);
         renderer.render(rt.scene, camera);
-        rt.frame++; lastActive.push(rt);
+        rt.frame++; rt.lastSeen = now; lastActive.push(rt);
         moving = moving || (st.opts.animate && (rt.groups.people.visible || rt.groups.vehicles.visible));
       }
       if (moving) map.triggerRepaint();
     },
-    onRemove() { rts.forEach((rt) => rt.scene.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); })); rts.clear(); renderer?.dispose(); }
+    onRemove() { rts.forEach(disposeRt); rts.clear(); disposeGeometries(); renderer?.dispose(); }
   };
 
   return Object.assign(layer, {
