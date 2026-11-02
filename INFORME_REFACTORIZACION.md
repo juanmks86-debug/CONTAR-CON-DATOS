@@ -1,9 +1,9 @@
-# Informe de la refactorización modular (escenas 3D + metadatos de datos)
+# Informe: refactorización modular, vista previa de escenas y metadatos de datos
 
 ## 1. Qué cambió respecto de tu repositorio
 | Tipo | Archivos |
 |---|---|
-| Modificados | README.md, package.json (scripts), src/App.jsx, src/geo.js (+25 líneas), src/index.css (1 línea), src/MapaJujuy.jsx (1 línea de importación + 2 líneas que sólo actúan en compilaciones de prueba) |
+| Modificados | README.md, package.json (scripts), src/App.jsx, src/geo.js, src/index.css (1 línea), src/MapaJujuy.jsx (importación, liberación de la elevación del relieve y 2 líneas que sólo actúan en compilaciones de prueba) |
 | Agregados | src/components/Map3D/ (6 módulos), src/config/ (2), src/data/ (indicators.js, sources.js), scripts/check-data.mjs, tests/ |
 | Eliminados | src/escenas3d.js y src/escenasData.js (reemplazados por el motor modular; copias en tests/regresion/original/) |
 | Sin cambios | src/data.js, public/data/jujuy-departamentos.geojson, PENDIENTES_TECNICOS.md |
@@ -11,18 +11,14 @@
 Se conservan: mapa MapLibre, relieve, motor three.js (capa personalizada), animaciones de personas y vehículos, rotación, zoom y selección departamental.
 
 ## 2. Susques idéntico
-El borrador modular previo NO era fiel (otro circuito de camiones, chimenea distinta y seleccionable, escena solar activa). Se corrigió y se verificó con `npm run test:regresion`: en 10 cuadros (distintos zoom, filtros y selección) las instancias dibujadas (posición, tamaño, color, opacidad) y la selección con el mouse son idénticas al piloto original (107 instancias en nivel 4). Con las 16 geometrías cargadas sólo se dibuja Susques-minería.
-Limitación: la regresión usa un mapa simulado en Node, no compara píxeles en navegador.
+El borrador modular previo NO era fiel (otro circuito de camiones, chimenea distinta y seleccionable, escena solar activa). Se corrigió y se verificó con `npm run test:regresion`: en 10 cuadros las instancias dibujadas (posición, tamaño, color, opacidad) y la selección con el mouse son idénticas al piloto original (107 instancias en nivel 4). Limitación: la regresión usa un mapa simulado en Node, no compara píxeles en navegador.
 
-Cambios deliberados que no alteran lo que se ve:
-- La altura del ancla se muestrea en cada cuadro (MapLibre la entrega relativa al centro de la pantalla y cambia al mover la cámara).
-- Las etiquetas de departamento ya no capturan clics (tapaban la escena); el clic llega al polígono, que sigue seleccionando el departamento.
-
-## 3. Activación de escenas
-Sólo Susques-minería está activa (`piloto: true`). Las demás están configuradas pero desactivadas: una actividad se activa únicamente con `validada: true` y al menos una fuente.
+## 3. Escenas por departamento y vista previa
+Hay **25 escenas definidas en los 16 departamentos** (plantas de procesamiento, plantas azucareras, nave industrial en Palpalá, galpones, establecimientos hoteleros, comercio y servicios). **Sólo Susques-minería está activa** (`piloto: true`); una actividad sólo se activa con `validada: true` y al menos una fuente.
+El interruptor **«Vista previa ilustrativa»** (apagado por defecto) dibuja también las no validadas, con aviso permanente y el rótulo «Vista previa · escena no validada» en la ficha. Las plantillas son genéricas: ninguna corresponde a un establecimiento real.
 
 ## 4. Datos e indicadores
-135 indicadores (7 provinciales, 128 departamentales) con unidad, escala, año, condición y fuente. **Ninguno está validado**: desde el entorno de desarrollo no hubo acceso a DPEC, INDEC, SIACAM ni a las demás fuentes, y no se cargaron valores ni URLs sin confirmar. Las fuentes figuran como candidatas "sin consultar". El año 2026 se marca parcial (año en curso).
+135 indicadores (7 provinciales, 128 departamentales) con unidad, escala, año, condición y fuente. **Ninguno está validado**: desde el entorno de desarrollo no hubo acceso a DPEC, INDEC, SIACAM ni a las demás fuentes, y no se cargaron valores ni URLs sin confirmar. 2026 se marca parcial (año en curso).
 
 ### Conciliación provincial vs. suma departamental (salida de `npm run check:data`)
 ```
@@ -56,27 +52,31 @@ CONCILIACIÓN provincial vs suma de los 16 departamentos
   Participación en el PBI            2026  prov=   100  suma= 145.4  dif= -45.4  NO CONCILIA
 Crecimiento de empleo declarado vs calculado: NO coincide en santa_catalina (45% vs 47.6%), cochinoca (75% vs 76%), valle_grande (35% vs 36%)
 ```
-Origen: los totales provinciales son literales escritos a mano en el App.jsx original (el comentario decía "aggregated", pero no se calculaban). La diferencia de empleo cambia de signo según el año (negativa hasta 2021, positiva desde 2024), por lo que no se explica por "empleo no asignado a departamentos". No se corrigió ningún valor.
+Origen: los totales provinciales son literales escritos a mano en el App.jsx original (el comentario decía "aggregated", pero no se calculaban). La diferencia de empleo cambia de signo según el año, por lo que no se explica por "empleo no asignado". No se corrigió ningún valor.
 
-## 5. Pruebas
-Navegador real (Chromium sin interfaz, WebGL por software, teselas simuladas): 46 comprobaciones aprobadas en dos corridas (32 + 14), sin errores de JavaScript ni avisos de la aplicación.
-- Carga y 16 etiquetas; relieve activo; vista provincial sin elementos de escena.
-- Acercamiento gradual con la rueda: el mapa nunca queda en blanco; instalaciones y vehículos desde zoom 8,8; personas en nivel 3; nivel 4 desde 12,7.
-- Altura de la escena = altura del terreno dibujado.
-- Controles (personas, vehículos, instalaciones, animaciones), ficha informativa con "Representación: Ilustrativa", filtros sectoriales, cambio Susques → Tilcara → Susques, zoom/desplazamiento/rotación.
-- Memoria JS estable; descarga de escenas lejanas (15 materiales liberados a los 25 s) y reconstrucción.
+## 5. Errores encontrados y corregidos durante las pruebas
+1. **MapLibre 4.7.1 y la elevación del centro.** Tras easeTo/fitBounds/flyTo con relieve (incluido el encuadre inicial) queda `_elevationFreeze = true` y la altura del terreno bajo el centro de la cámara no se sigue hasta el primer gesto manual: el encuadre queda corrido y las escenas se ven desplazadas (el ancla llegó a caer fuera de pantalla). Se libera al terminar cada movimiento. Usa un campo interno de MapLibre con verificación de tipo; revisar si se actualiza la librería. Afectaba también a la app original.
+2. **Descarte por cámara.** Las escenas no construidas se descartaban según el centroide del departamento y no su propia ancla; una segunda escena lejana podía no aparecer nunca. Hay una prueba que falla sin la corrección.
+3. **Etiquetas de departamento** que interceptaban los clics sobre la escena (ahora el clic llega al mapa).
+4. La altura del ancla se muestrea en cada cuadro (MapLibre la entrega relativa al centro de la pantalla).
+
+## 6. Pruebas
+**Node:** regresión de Susques, vista previa (25 escenas, anclas, descarte), descarga de escenas lejanas y CPU: todas pasan.
+**Navegador real** (Chromium sin interfaz, WebGL por software, teselas simuladas, sin internet):
+- Versión final: filtros, cambio Susques → Tilcara → Susques, reaparición de la escena, memoria y consola: 18/18. Cinco departamentos con dos escenas (vista previa): 25/25. Suite base hasta rotación: 26/26 en una corrida previa que se cortó.
+- Antes de las correcciones 1 y 2, los 16 departamentos pasaron salvo la segunda escena de Ledesma (error 2). Los 16 se revisaron visualmente en capturas.
+- No se vieron errores de JavaScript ni avisos de la aplicación.
 
 ### Rendimiento: lo medido y lo no medido
-- CPU de JavaScript del motor: 0,01–0,07 ms por cuadro (Node).
-- En el navegador de prueba, con GPU emulada por software, la escena agrega ~11 ms por cuadro de dibujo (0,43 ms sin escena) y todo el mapa corre a ~2 cuadros/s. Eso es el emulador: **el rendimiento en una GPU real NO fue medido**.
-- Para medirlo en tu PC: Chrome → F12 → Rendimiento → grabar 10 s con la escena de Susques en nivel 4.
+- CPU de JavaScript del motor: 0,02 ms por cuadro con una escena y 0,46 ms con las 25 a la vez (Node, peor caso).
+- En el navegador de prueba (GPU emulada por software) la escena agrega ~7 ms por cuadro de dibujo y todo el mapa corre a ~2 cuadros/s: es el emulador. **El rendimiento en una GPU real NO fue medido.** Para medirlo: Chrome → F12 → Rendimiento → grabar 10 s con la escena de Susques en nivel 4.
 
-## 6. Limitaciones y riesgos conocidos
-- MapLibre puede quedar en blanco tras un salto brusco programático de cámara (`jumpTo`) con el relieve exagerado; no ocurrió con rueda, arrastre ni vuelos animados. La app no hace saltos, salvo un ajuste de encuadre inicial.
-- Imagen satelital real (Esri) y teselas de relieve reales (AWS) no se probaron; se simularon. Revisá las condiciones de uso de Esri.
+## 7. Limitaciones
+- Imagen satelital real (Esri) y relieve real (AWS) no se probaron; se simularon. Revisá las condiciones de uso de Esri.
 - No se probó en Windows ni en tu hardware.
-- Personas y vehículos son figuras procedurales: faltan los modelos GLB/GLTF (lista en `MODELOS_REQUERIDOS`, carpeta prevista public/models/).
+- Personas y vehículos son figuras procedurales: faltan los modelos GLB/GLTF (`MODELOS_REQUERIDOS`, carpeta prevista public/models/).
 - Los datos económicos siguen siendo ilustrativos.
+- Un salto brusco programático de cámara (`jumpTo`) con el relieve exagerado puede dejar MapLibre en blanco; no ocurre con rueda, arrastre ni vuelos animados.
 
-## 7. Siguiente paso
-Descargar las series oficiales y cargarlas en src/data/indicators.js (fuente completa, condición por punto, validacion: 'validado'); recién entonces validar actividades y activar escenas de otros departamentos.
+## 8. Siguiente paso
+Descargar las series oficiales, cargarlas en src/data/indicators.js (fuente completa, condición por punto, validacion: 'validado') y recién entonces validar actividades y activarlas.

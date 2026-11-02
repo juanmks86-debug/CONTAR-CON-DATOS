@@ -82,7 +82,7 @@ export default function App() {
   const [areas, setAreas] = useState({});
   const [chapter, setChapter] = useState(0);
   const [showDoc, setShowDoc] = useState(false);
-  const [sceneOpts, setSceneOpts] = useState({ people: true, vehicles: true, facilities: true, animate: true });
+  const [sceneOpts, setSceneOpts] = useState({ people: true, vehicles: true, facilities: true, animate: true, preview: false });
   const [picked, setPicked] = useState(null);
   const [level, setLevel] = useState(1);
 
@@ -187,8 +187,16 @@ export default function App() {
               className={`px-2.5 py-1 rounded-lg border transition ${sceneOpts[k] ? 'border-teal-300/70 text-teal-200 bg-teal-300/10' : 'border-white/15 text-slate-500'}`}>{label}</button>
           ))}
           <button onClick={() => setActiveFilter('todos')} className="px-2.5 py-1 rounded-lg border border-white/15 text-slate-300 hover:bg-white/5">Todos los sectores</button>
+          <button onClick={() => setSceneOpts((o) => ({ ...o, preview: !o.preview }))} aria-pressed={sceneOpts.preview}
+            title="Dibuja también las escenas ilustrativas que todavía no están validadas con fuente oficial"
+            className={`px-2.5 py-1 rounded-lg border transition ${sceneOpts.preview ? 'border-amber-300/80 text-amber-200 bg-amber-300/10' : 'border-white/15 text-slate-500'}`}>Vista previa ilustrativa</button>
         </div>
-        {level < 3 && !picked && (
+        {sceneOpts.preview && (
+          <div className="absolute left-1/2 -translate-x-1/2 bottom-[4.6rem] text-[11px] text-amber-200 bg-amber-950/80 border border-amber-700/60 rounded-lg px-3 py-1.5 pointer-events-none hidden md:block z-10">
+            Vista previa: escenas ilustrativas sin validar. No son establecimientos reales ni indican cantidades.
+          </div>
+        )}
+        {level < 3 && !picked && !sceneOpts.preview && (
           <div className="absolute left-1/2 -translate-x-1/2 bottom-20 text-[11px] text-slate-300 bg-[#07111d]/70 rounded-lg px-3 py-1.5 pointer-events-none hidden md:block z-10">
             Escenas ilustrativas: seleccioná Susques y acercate para ver las actividades
           </div>
@@ -204,6 +212,7 @@ export default function App() {
               <dt className="text-slate-500">Sector</dt><dd>{SECTORS[picked.sector]?.label}</dd>
               <dt className="text-slate-500">Actividad</dt><dd>{picked.actividad}</dd>
               <dt className="text-slate-500">Representación</dt><dd className="text-amber-300">{picked.tipo}</dd>
+              {picked.preview && (<><dt className="text-slate-500">Estado</dt><dd className="text-amber-300">Vista previa · escena no validada</dd></>)}
               <dt className="text-slate-500">Fuente</dt><dd>{picked.validada ? picked.fuentes.join(', ') : 'Actividad sin validar con fuente oficial'}</dd>
             </dl>
             <p className="mt-2 text-[10px] text-slate-500 leading-snug">Escena ilustrativa: no representa establecimientos reales ni cantidades de trabajadores, producción o empleo. Los indicadores oficiales están en los paneles.</p>
@@ -234,7 +243,7 @@ export default function App() {
             <div className="border border-white/10 rounded-lg p-2.5">
               <h3 className="text-[11px] font-semibold mb-1.5">Escenas 3D de este departamento <span className="text-amber-300 font-normal">(ilustrativas)</span></h3>
               <ul className="text-[11px] text-slate-300 space-y-1">
-                {(DEPARTMENTS_CONFIG.find((c) => c.id === dept.id)?.actividades || []).map((act) => <li key={act.label} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 bg-amber-300" />{act.label}{!act.validada && <span className="text-slate-500"> · sin validar</span>}{!SCENE_DEFS.find((d) => d.deptId === dept.id && d.actividad === act.label)?.activa && <span className="text-slate-500"> · escena desactivada</span>}</li>)}
+                {(DEPARTMENTS_CONFIG.find((c) => c.id === dept.id)?.actividades || []).map((act) => <li key={act.label} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 bg-amber-300" />{act.label}{!act.validada && <span className="text-slate-500"> · sin validar</span>}{!SCENE_DEFS.find((d) => d.deptId === dept.id && d.actividad === act.label)?.activa && <span className="text-slate-500">{sceneOpts.preview ? ' · vista previa' : ' · escena desactivada'}</span>}</li>)}
               </ul>
             </div>
             <div className="grid grid-cols-[1.25fr_1fr] gap-2">
@@ -342,7 +351,7 @@ export default function App() {
               <p><b className="text-teal-300">Cobertura.</b> Matriz productiva de los 16 departamentos de Jujuy, 2015–2026. Los datos de {LATEST} son <b>parciales</b>: el año está en curso.</p>
               <p><b className="text-teal-300">Territorio.</b> Límites departamentales: IGN. La superficie se calcula a partir de esos límites. Relieve: Terrain Tiles (AWS). Imagen satelital: Esri, Maxar, Earthstar Geographics.</p>
               <p><b className="text-teal-300">Datos económicos.</b> Todos los valores son <b>ilustrativos y sin fuente verificada</b>. Cada indicador declara unidad, escala geográfica (departamental o provincial, nunca mezcladas), año y condición (observado, estimado o parcial) en <code>src/data/indicators.js</code>. Altitud y población figuran como “No disponible”.</p>
-              <p><b className="text-teal-300">Escenas 3D.</b> Son representaciones ilustrativas: no son establecimientos reales ni indican cantidades de trabajadores, producción o empleo. Sólo está activa la escena de Susques; las demás se activan únicamente cuando su actividad esté validada con fuente.</p>
+              <p><b className="text-teal-300">Escenas 3D.</b> Son representaciones ilustrativas: no son establecimientos reales ni indican cantidades de trabajadores, producción o empleo. Sólo está activa la escena de Susques; las demás se activan únicamente cuando su actividad esté validada con fuente. El interruptor «Vista previa ilustrativa» (apagado por defecto) permite ver las escenas no validadas, rotuladas como tales.</p>
               <div>
                 <b className="text-teal-300">Fuentes oficiales candidatas</b> <span className="text-slate-500">(ninguna consultada todavía)</span>
                 <ul className="mt-1 space-y-0.5">{FUENTES_CANDIDATAS.map((f) => <li key={f.id} className="flex gap-2"><i className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 bg-slate-500" />{f.organismo} <span className="text-slate-500">· {f.accedida ? 'consultada' : 'sin consultar'}</span></li>)}</ul>

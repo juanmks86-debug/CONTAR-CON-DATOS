@@ -10,7 +10,8 @@
     "check:data": "node scripts/check-data.mjs",
     "test:regresion": "cd tests/regresion && node --import ./register.mjs snapshot.mjs orig && node --import ./register.mjs snapshot.mjs new && node compare.mjs",
     "test:descarga": "cd tests/regresion && node --import ./register.mjs unload.mjs",
-    "test:cpu": "cd tests/regresion && node --import ./register.mjs cpu.mjs"
+    "test:cpu": "cd tests/regresion && node --import ./register.mjs cpu.mjs",
+    "test:vista-previa": "cd tests/regresion && node --import ./register.mjs vista-previa.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.462.0",

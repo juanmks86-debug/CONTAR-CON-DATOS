@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import maplibregl from 'maplibre-gl';
 import { SCENE_DEFS } from '../../config/departmentsConfig';
-import { centroidOf, spreadPoints } from '../../geo';
+import { spreadPoints } from '../../geo';
 import { LEVEL_ZOOM, levelOf, sceneScale, fades } from './ZoomController';
 import { disposeGeometries } from './utils';
 import { buildInstallations, layoutInstallations, installationPicks } from './InstallationManager';
@@ -18,11 +18,10 @@ const disposeRt = (rt) => rt.scene.traverse((o) => { o.material?.dispose?.(); o.
 const group = (sector) => (sector === 'servicios' ? 'turismo' : sector); // "Turismo y servicios" comparten filtro
 
 export function createEscenasLayer({ onPick }) {
-  const st = { opts: { people: true, vehicles: true, facilities: true, animate: true }, filter: 'todos', selected: null, geoms: {} };
-  const rts = new Map(), centroids = {}, anchors = {};
+  const st = { opts: { people: true, vehicles: true, facilities: true, animate: true, preview: false }, filter: 'todos', selected: null, geoms: {} };
+  const rts = new Map(), anchors = {};
   let map, renderer, camera, lastActive = [];
 
-  const rough = (id) => (centroids[id] ||= centroidOf(st.geoms[id]));
   const anchorOf = (def) => {
     if (def.anchor) return def.anchor;
     anchors[def.deptId] ||= spreadPoints(st.geoms[def.deptId], SCENE_DEFS.filter((d) => d.deptId === def.deptId).length);
@@ -56,7 +55,8 @@ export function createEscenasLayer({ onPick }) {
     return rt;
   }
 
-  const active = () => SCENE_DEFS.filter((d) => d.activa && st.geoms[d.deptId]
+  // `preview` (apagado por defecto) dibuja también las escenas ilustrativas aún no validadas
+  const active = () => SCENE_DEFS.filter((d) => (d.activa || st.opts.preview) && st.geoms[d.deptId]
     && (st.filter === 'todos' || st.filter === group(d.sector)) && (!st.selected || st.selected === d.deptId));
 
   const layer = {
@@ -79,7 +79,8 @@ export function createEscenasLayer({ onPick }) {
       let moving = false;
       renderer.resetState();
       for (const def of active()) {
-        const rc = rts.get(def.id) ? [rts.get(def.id).lng0, rts.get(def.id).lat0] : rough(def.deptId);
+        // punto de referencia del descarte por cámara: el ancla de ESTA escena (no el centroide del departamento)
+        const rc = rts.get(def.id) ? [rts.get(def.id).lng0, rts.get(def.id).lat0] : anchorOf(def);
         const p = map.project(rc);
         if (p.x < -900 || p.y < -900 || p.x > W + 900 || p.y > H + 900) continue; // culling: fuera de cámara
         let rt = rts.get(def.id);
@@ -118,6 +119,8 @@ export function createEscenasLayer({ onPick }) {
     setFilter(f) { st.filter = f; map?.triggerRepaint(); },
     setSelected(id) { st.selected = id; map?.triggerRepaint(); },
     setGeometries(g) { st.geoms = g; },
+    sceneAnchors() { return Object.fromEntries(SCENE_DEFS.filter((d) => st.geoms[d.deptId]).map((d) => [d.id, anchorOf(d)])); }, // para pruebas
+    visibleScenes() { return lastActive.map((rt) => rt.def.id); }, // para pruebas
     // selección por proximidad en pantalla (misma cámara del mapa)
     pick(pt) {
       if (!map) return false;
@@ -132,7 +135,7 @@ export function createEscenasLayer({ onPick }) {
       }
       if (!best) return false;
       const { def } = best.rt;
-      onPick({ deptId: def.deptId, sector: def.sector, actividad: def.actividad, elemento: best.it.elemento, tipo: 'Ilustrativa', validada: def.validada, fuentes: def.fuentes });
+      onPick({ deptId: def.deptId, sector: def.sector, actividad: def.actividad, elemento: best.it.elemento, tipo: 'Ilustrativa', validada: def.validada, fuentes: def.fuentes, preview: !def.activa });
       return true;
     }
   });

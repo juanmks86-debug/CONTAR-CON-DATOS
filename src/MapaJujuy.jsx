@@ -68,6 +68,11 @@ export function zoomToDepartment(map, feature) {
   });
 }
 
+// MapLibre 4.7.1: tras easeTo/fitBounds/flyTo con relieve (incluido el encuadre inicial) deja `_elevationFreeze` en true y la
+// altura del terreno bajo el centro de la cámara deja de seguirse hasta el primer gesto manual del usuario: el encuadre queda
+// corrido y las escenas 3D se ven desplazadas. Se libera al terminar cada movimiento (campo interno, con verificación de tipo).
+const unfreezeElevation = (map) => { if (map && map._elevationFreeze === true && !map.isMoving()) map._elevationFreeze = false; };
+
 const viewPad = (el) => ({ top: 40, bottom: 40, right: 40, left: el.clientWidth > 1000 ? 380 : 40 });
 
 export function resetMapView(map) {
@@ -213,6 +218,8 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       }
     });
     mapRef.current = map;
+    map.on('moveend', () => unfreezeElevation(map));
+    map.on('idle', () => unfreezeElevation(map));
     if (import.meta.env.VITE_EXPOSE_MAP) window.__map = map; // sólo para pruebas automáticas
 
     const resizeObserver = typeof ResizeObserver !== 'undefined'
@@ -332,6 +339,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
         readyRef.current = true;
         setLoading(false);
         map.fitBounds(provinceBounds, { padding: viewPad(map.getContainer()), duration: 0 });
+        unfreezeElevation(map);
         // aplicar estado inicial (filtro / selección)
         map.fire('jujuy-ready');
       } catch (err) {
