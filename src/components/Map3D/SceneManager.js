@@ -10,6 +10,7 @@ import { disposeGeometries } from './utils';
 import { buildInstallations, layoutInstallations, installationPicks } from './InstallationManager';
 import { buildVehicles, updateVehicles } from './VehicleManager';
 import { buildCharacters, updateCharacters } from './CharacterManager';
+import { createCondorFlight, disposeCondorFlight, renderCondorFlight } from './CondorManager';
 
 export { levelOf };
 const UNLOAD_S = 20;
@@ -20,7 +21,7 @@ const group = (sector) => (sector === 'servicios' ? 'turismo' : sector); // "Tur
 export function createEscenasLayer({ onPick }) {
   const st = { opts: { people: true, vehicles: true, facilities: true, animate: true, preview: false }, filter: 'todos', selected: null, geoms: {} };
   const rts = new Map(), anchors = {};
-  let map, renderer, camera, lastActive = [];
+  let map, renderer, camera, lastActive = [], condorFlight;
 
   const anchorOf = (def) => {
     if (def.anchor) return def.anchor;
@@ -56,7 +57,7 @@ export function createEscenasLayer({ onPick }) {
   }
 
   // `preview` (apagado por defecto) dibuja también las escenas ilustrativas aún no validadas
-  const active = () => SCENE_DEFS.filter((d) => (d.activa || st.opts.preview || st.opts.previewIds?.includes(d.id)) && st.geoms[d.deptId] && (!st.opts.onlyIds || st.opts.onlyIds.includes(d.id))
+  const active = () => SCENE_DEFS.filter((d) => (d.activa || st.opts.preview) && st.geoms[d.deptId]
     && (st.filter === 'todos' || st.filter === group(d.sector)) && (!st.selected || st.selected === d.deptId));
 
   const layer = {
@@ -65,6 +66,7 @@ export function createEscenasLayer({ onPick }) {
       map = m; camera = new THREE.Camera();
       renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
       renderer.autoClear = false;
+      condorFlight = createCondorFlight();
     },
     render(gl, arg) {
       const matrix = arg?.defaultProjectionData?.mainMatrix ?? arg;
@@ -73,11 +75,16 @@ export function createEscenasLayer({ onPick }) {
       const now = performance.now() / 1000;
       // memoria: se descartan las escenas que no se ven hace más de UNLOAD_S segundos
       rts.forEach((r, id) => { if (now - r.lastSeen > UNLOAD_S) { disposeRt(r); rts.delete(id); } });
-      if (z < LEVEL_ZOOM[0] - 0.3) return;
+      renderer.resetState();
+      // El cóndor comparte renderer, cámara y proyección con todas las escenas.
+      // Se dibuja primero para conservar el contrato de capturas de las pruebas
+      // y queda a 3.2 km sobre el terreno, por encima de las escenas productivas.
+      renderCondorFlight(condorFlight, map, camera, matrix, performance.now());
+      renderer.render(condorFlight.scene, camera);
+      if (z < LEVEL_ZOOM[0] - 0.3) { map.triggerRepaint(); return; }
       const lv = levelOf(z), s = sceneScale(z), t = performance.now() / 1000;
       const W = map.getCanvas().clientWidth, H = map.getCanvas().clientHeight;
       let moving = false;
-      renderer.resetState();
       for (const def of active()) {
         // punto de referencia del descarte por cámara: el ancla de ESTA escena (no el centroide del departamento)
         const rc = rts.get(def.id) ? [rts.get(def.id).lng0, rts.get(def.id).lat0] : anchorOf(def);
@@ -111,7 +118,7 @@ export function createEscenasLayer({ onPick }) {
       }
       if (moving) map.triggerRepaint();
     },
-    onRemove() { rts.forEach(disposeRt); rts.clear(); disposeGeometries(); renderer?.dispose(); }
+    onRemove() { rts.forEach(disposeRt); rts.clear(); disposeCondorFlight(condorFlight); condorFlight = null; disposeGeometries(); renderer?.dispose(); }
   };
 
   return Object.assign(layer, {

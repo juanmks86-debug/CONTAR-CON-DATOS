@@ -1,13 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, CalendarDays, Compass, FileText, Globe2, Layers, Mountain,
   Pickaxe, TrendingUp, Users, Wheat, X
 } from 'lucide-react';
 import MapaJujuy from './MapaJujuy';
-import StoryMode from './story/StoryMode';
-import MusicPlayer from './story/MusicPlayer';
-import { usePrefersReducedMotion } from './story/hooks';
-import { CHAPTERS as STORY_CHAPTERS } from './story/storyData';
 import { indicadorProvincial, indicadorDepartamental, ultimo, estadoDe, conciliacion, controlCrecimiento } from './data/indicators';
 import { FUENTES_CANDIDATAS } from './data/sources';
 import { JUJUY_DEPARTMENTS_DATA, PROVINCIAL_TOTALS } from './data';
@@ -26,7 +22,7 @@ const NA = 'No disponible';
 const LEVEL_NAMES = ['Provincial', 'Departamental', 'Actividad', 'Detalle'];
 const SCENE_TOGGLES = [['people', 'Personas'], ['vehicles', 'Vehículos'], ['facilities', 'Instalaciones'], ['animate', 'Animaciones']];
 const fmt = (n) => Math.round(n).toLocaleString('es-AR');
-const glass = 'bg-[#07111d]/85 border border-white/12 backdrop-blur-md pointer-events-auto';
+const glass = 'bg-[#07111d]/85 border border-white/12 backdrop-blur-md';
 const card = 'bg-[#0a1624] border border-white/10 rounded-xl';
 
 function Donut({ parts }) {
@@ -86,13 +82,6 @@ export default function App() {
   const [areas, setAreas] = useState({});
   const [chapter, setChapter] = useState(0);
   const [showDoc, setShowDoc] = useState(false);
-  // MODO: 'historia' (recorrido narrado, por defecto) o 'explorar' (interfaz de datos libre). El mapa es el mismo en ambos.
-  const [mode, setMode] = useState(() => (typeof window !== 'undefined' && window.location.hash === '#explorar' ? 'explorar' : 'historia'));
-  const [storyState, setStoryState] = useState(null);
-  const [storyChapterId, setStoryChapterId] = useState('territorio');
-  const mapRef = useRef(null);
-  const reduced = usePrefersReducedMotion();
-  const story = mode === 'historia';
   const [sceneOpts, setSceneOpts] = useState({ people: true, vehicles: true, facilities: true, animate: true, preview: false });
   const [picked, setPicked] = useState(null);
   const [level, setLevel] = useState(1);
@@ -126,61 +115,29 @@ export default function App() {
   const TOPNAV = [['Inicio', 0], ['Territorio', 1], ['Minería y litio', 3], ['Agroindustria', 4], ['Turismo y servicios', 5], ['Empleo', 6], ['Metodología', 7]];
   const LEGEND = [['agro', 'Agroindustria'], ['mineril', 'Minería y litio'], ['turismo', 'Turismo y servicios']];
 
-  const switchMode = (m) => {
-    if (m === mode) return;
-    setPicked(null);
-    if (m === 'historia') { setSelectedDeptId(null); setActiveFilter('todos'); } else setStoryState(null);
-    setMode(m);
-    window.history.replaceState(null, '', m === 'explorar' ? '#explorar' : '#historia');
-    window.scrollTo(0, 0);
-  };
-  // al pasar a explorar, la cámara vuelve a la vista provincial con el encuadre de ese modo
-  useEffect(() => { if (mode === 'explorar') mapRef.current?.applyCamera({ type: 'province', pitch: 52, bearing: -8, duration: 1100 }); }, [mode]);
-  const sceneProps = useMemo(() => ({ ...sceneOpts, animate: sceneOpts.animate && !reduced, ...(story ? { preview: false, previewIds: storyState?.previewIds || [], onlyIds: storyState?.previewIds?.length ? storyState.previewIds : null } : { previewIds: [], onlyIds: null }) }), [sceneOpts, reduced, story, storyState]);
-
   return (
     <div id="top" className="min-h-screen bg-[#050d17] text-slate-100 pb-28">
       {/* HEADER */}
-      <header className="h-14 flex items-center justify-between gap-2 sm:gap-4 px-3 sm:px-5 border-b border-white/10 bg-[#07111d]/95 backdrop-blur sticky top-0 z-40">
-        <div className="flex items-center gap-1.5 sm:gap-2 font-bold tracking-wide text-sm sm:text-lg shrink-0 min-w-0">
+      <header className="h-14 flex items-center justify-between gap-4 px-5 border-b border-white/10 bg-[#07111d]/95 backdrop-blur sticky top-0 z-40">
+        <div className="flex items-center gap-2 font-bold tracking-wide text-lg shrink-0">
           <Mountain className="w-6 h-6 text-teal-300" /> <span>JUJUY <span className="text-teal-300">DATA LAB</span></span>
         </div>
-        <nav className={`${story ? 'hidden' : 'hidden lg:flex'} items-center gap-1 text-[13px]`}>
+        <nav className="hidden lg:flex items-center gap-1 text-[13px]">
           {TOPNAV.map(([label, c]) => (
             <button key={label} onClick={CHAPTERS[c][2]}
               className={`px-3 py-4 border-b-2 transition ${chapter === c ? 'border-teal-300 text-teal-200' : 'border-transparent text-slate-300 hover:text-white'}`}>{label}</button>
           ))}
         </nav>
-        <div className="flex items-center gap-3 text-xs text-slate-300 shrink-0">
-          <div role="group" aria-label="Modo de visualización" className="flex overflow-hidden rounded-lg border border-white/15">
-            {[['historia', 'Historia'], ['explorar', 'Explorar datos']].map(([m, l]) => (
-              <button key={m} onClick={() => switchMode(m)} aria-pressed={mode === m} data-mode={m} aria-label={l}
-                className={`px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs whitespace-nowrap transition ${mode === m ? 'bg-teal-400 font-bold text-[#04141c]' : 'text-slate-300 hover:bg-white/5'}`}>{m === 'explorar' ? <><span className="sm:hidden">Datos</span><span className="hidden sm:inline">{l}</span></> : l}</button>
-            ))}
-          </div>
-          {story && <button onClick={() => setShowDoc(true)} className="hidden sm:block text-slate-300 underline-offset-2 hover:underline">Metodología</button>}
-          <span className="hidden xl:flex items-center gap-2"><CalendarDays className="w-4 h-4 text-teal-300" /> 2015 – 2026</span>
-        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-300 shrink-0"><CalendarDays className="w-4 h-4 text-teal-300" /> 2015 – 2026</div>
       </header>
 
-      {/* MAPA ÚNICO Y PERSISTENTE: no se desmonta al cambiar de modo; sólo cambia el marco que lo rodea */}
-      <div className={story ? 'fixed left-0 top-14 z-20 h-[42vh] w-full lg:z-0 lg:h-[calc(100vh-3.5rem)] lg:w-[64%]' : 'fixed inset-x-0 bottom-0 top-14 z-0'}>
-        <MapaJujuy ref={mapRef} departments={mapDepartments} selectedDeptId={selectedDeptId} activeFilter={activeFilter}
-          onSelect={story ? () => {} : (id) => { setSelectedDeptId(id); if (id) setChapter(1); }} view3d={view3d} onFeatures={setAreas}
-          scenes={sceneProps} onScenePick={setPicked} onLevel={setLevel}
-          layout={story ? 'story' : 'explore'} interactive={!story} reducedMotion={reduced}
-          highlightIds={story ? storyState?.highlightIds ?? null : null} focusIds={story ? storyState?.focusIds ?? null : null}
-          intensity={story ? storyState?.intensity ?? null : null} pois={story ? storyState?.pois ?? null : null}
-          onReset={story ? () => mapRef.current?.applyCamera(STORY_CHAPTERS.find((c) => c.id === storyChapterId).camera) : undefined} />
-      </div>
-
-      {story ? (
-        <StoryMode mapRef={mapRef} areas={areas} reducedMotion={reduced} onStoryState={setStoryState} onActive={setStoryChapterId} onExplore={() => switchMode('explorar')} />
-      ) : (
-      <>
-
       {/* HERO: MAPA A PANTALLA COMPLETA */}
-      <section id="hero" className="pointer-events-none relative h-[72vh] min-h-[600px] overflow-hidden scroll-mt-14">
+      <section id="hero" className="relative h-[72vh] min-h-[600px] overflow-hidden scroll-mt-14">
+        <div className="absolute inset-0">
+          <MapaJujuy departments={mapDepartments} selectedDeptId={selectedDeptId} activeFilter={activeFilter}
+            onSelect={(id) => { setSelectedDeptId(id); if (id) setChapter(1); }} view3d={view3d} onFeatures={setAreas}
+            scenes={sceneOpts} onScenePick={setPicked} onLevel={setLevel} />
+        </div>
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-[#050d17] via-[#050d17]/55 to-transparent to-60%" />
         <div className="absolute inset-x-0 bottom-0 h-24 pointer-events-none bg-gradient-to-t from-[#050d17] to-transparent" />
 
@@ -314,7 +271,6 @@ export default function App() {
         )}
       </section>
 
-      <div className="relative z-10 bg-[#050d17] pt-4">
       {/* INDICADORES */}
       <section id="indicadores" className="grid grid-cols-1 xl:grid-cols-[1.05fr_1.25fr_.9fr] gap-4 px-4 lg:px-6 pt-2 scroll-mt-16">
         <div className={`${card} p-4`}>
@@ -366,8 +322,6 @@ export default function App() {
         Fuentes: límites IGN / IDERA · relieve Terrain Tiles (AWS) · imágenes Esri, Maxar, Earthstar Geographics · datos económicos: ilustrativos, pendientes de fuente oficial.
       </p>
 
-      </div>
-
       {/* LÍNEA DE CAPÍTULOS */}
       <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#07111d]/95 backdrop-blur border-t border-white/10 px-4 lg:px-8 pt-3 pb-3 flex items-end gap-4" aria-label="Capítulos">
         <div className="hidden xl:block w-64 shrink-0 text-[11px] text-slate-400 leading-snug border-r border-white/10 pr-4">
@@ -385,11 +339,6 @@ export default function App() {
           ))}
         </div>
       </nav>
-
-      </>
-      )}
-
-      <MusicPlayer lifted={!story} />
 
       {showDoc && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4" onMouseDown={(e) => e.target === e.currentTarget && setShowDoc(false)}>
