@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
-import { createEscenasLayer, levelOf } from './components/Map3D/SceneManager';
+import { levelOf } from './components/Map3D/ZoomController';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // GeoJSON real de los 16 departamentos de Jujuy (IGN/IDERA), en /public/data/
@@ -56,8 +56,8 @@ export function zoomToDepartment(map, feature) {
   extendCoordinates(feature.geometry.coordinates);
 
   // deja libre la ficha de la derecha en pantallas grandes (y evita paddings imposibles en pantallas chicas)
-  const wide = map.getContainer().clientWidth > 1000;
-  const padding = { top: 100, bottom: 100, left: wide ? 120 : 40, right: wide ? 420 : 40 };
+  const el = map.getContainer(), wide = el.clientWidth > 1000;
+  const padding = el.dataset.layout === 'story' ? framePad(map) : { top: 100, bottom: 100, left: wide ? 120 : 40, right: wide ? 420 : 40 };
 
   map.fitBounds(bounds, {
     padding,
@@ -73,7 +73,24 @@ export function zoomToDepartment(map, feature) {
 // corrido y las escenas 3D se ven desplazadas. Se libera al terminar cada movimiento (campo interno, con verificación de tipo).
 const unfreezeElevation = (map) => { if (map && map._elevationFreeze === true && !map.isMoving()) map._elevationFreeze = false; };
 
-const viewPad = (el) => ({ top: 40, bottom: 40, right: 40, left: el.clientWidth > 1000 ? 380 : 40 });
+// MapLibre 4.7.1: con relieve, los polígonos se dibujan en texturas por baldosa que quedan en caché (`tile.rtt`) y esa caché NO se
+// invalida cuando cambia el feature-state (resalte, atenuación, intensidad): el mapa queda desactualizado hasta que otra cosa
+// obliga a redibujar esas baldosas. Se invalidan a mano (API interna, con verificación; sin relieve no hace nada).
+const refreshTerrainTextures = (map) => {
+  try { map.terrain?.sourceCache?.getRenderableTiles?.().forEach((t) => { t.rtt = []; }); } catch { /* API distinta o sin relieve */ }
+  map.triggerRepaint();
+};
+
+const viewPad = (el) => (el.dataset.layout === 'story'
+  ? { top: 50, bottom: 50, right: 40, left: 40 }
+  : { top: 40, bottom: 40, right: 40, left: el.clientWidth > 1000 ? 380 : 40 });
+// márgenes proporcionales al tamaño del mapa (en la historia el mapa es un panel y en celular es chico)
+const framePad = (map) => {
+  const el = map.getContainer();
+  if (el.dataset.layout !== 'story') return viewPad(el);
+  const px = Math.min(70, Math.floor(el.clientWidth / 8)), py = Math.min(70, Math.floor(el.clientHeight / 6));
+  return { top: py, bottom: py, left: px, right: px };
+};
 
 export function resetMapView(map) {
   map.fitBounds(provinceBounds, {
@@ -146,10 +163,11 @@ const featureArea = (g) => {
   return polys.reduce((t, p) => t + ringArea(p[0]) - p.slice(1).reduce((h, r) => h + ringArea(r), 0), 0);
 };
 
-export default function MapaJujuy({ departments, selectedDeptId, activeFilter, onSelect, view3d = true, onFeatures, scenes, onScenePick, onLevel }) {
+const MapaJujuy = forwardRef(function MapaJujuy({ departments, selectedDeptId, activeFilter, onSelect, view3d = true, onFeatures, scenes, onScenePick, onLevel, onReset, layout = 'explore', interactive = true, highlightIds = null, focusIds = null, intensity = null, pois = null, reducedMotion = false }, ref) {
   const scenesRef = useRef(null);
   const latest = useRef({});
-  latest.current = { scenes, activeFilter, selectedDeptId, onScenePick, onLevel };
+  latest.current = { scenes, activeFilter, selectedDeptId, onScenePick, onLevel, onReset, layout, highlightIds, focusIds, intensity, reducedMotion };
+  const pendingCamera = useRef(null);
   const levelRef = useRef(0);
   const onFeaturesRef = useRef(onFeatures);
   onFeaturesRef.current = onFeatures;
@@ -168,6 +186,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
 
   // --- Crear mapa una sola vez ---
   useEffect(() => {
+    containerRef.current.dataset.layout = layout;
     const map = new maplibregl.Map({
       container: containerRef.current,
       bounds: JUJUY_BOUNDS,
@@ -220,7 +239,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
     mapRef.current = map;
     map.on('moveend', () => unfreezeElevation(map));
     map.on('idle', () => unfreezeElevation(map));
-    if (import.meta.env.VITE_EXPOSE_MAP) window.__map = map; // sólo para pruebas automáticas
+    if (import.meta.env.VITE_EXPOSE_MAP) { window.__map = map; window.__mapId = (window.__mapId || 0) + 1; } // sólo para pruebas automáticas
 
     const resizeObserver = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => map.resize())
@@ -228,7 +247,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
     if (resizeObserver && containerRef.current) resizeObserver.observe(containerRef.current);
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-    map.addControl(new ResetViewControl(() => onSelectRef.current(null)), 'top-right');
+    map.addControl(new ResetViewControl(() => (latest.current.onReset ? latest.current.onReset() : onSelectRef.current(null))), 'top-right');
     map.addControl(
       new maplibregl.AttributionControl({
         compact: true,
@@ -279,6 +298,8 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
               'case',
               ['boolean', ['feature-state', 'selected'], false], 0.7,
               ['boolean', ['feature-state', 'dimmed'], false], 0.06,
+              ['boolean', ['feature-state', 'focus'], false], 0.78,
+              ['boolean', ['feature-state', 'useIntensity'], false], ['+', 0.16, ['*', 0.66, ['to-number', ['feature-state', 'intensity'], 0]]],
               0.5
             ]
           }
@@ -286,26 +307,31 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
         map.addLayer({
           id: 'deptos-line', type: 'line', source: 'deptos',
           paint: {
-            'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#ffffff', ['get', 'color']],
-            'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 3, 1.2]
+            'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#ffffff', ['boolean', ['feature-state', 'focus'], false], '#ffffff', ['get', 'color']],
+            'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 3, ['boolean', ['feature-state', 'focus'], false], 3, 1.2]
           }
         });
 
-        // escenas productivas 3D (misma cámara y terreno que el mapa)
-        const escenas = createEscenasLayer({ onPick: (info) => latest.current.onScenePick?.(info) });
-        escenas.setGeometries(Object.fromEntries(gj.features.map((f) => [f.properties.deptId, f.geometry])));
-        escenas.setOptions(latest.current.scenes || {});
-        escenas.setFilter(latest.current.activeFilter);
-        escenas.setSelected(latest.current.selectedDeptId);
-        map.addLayer(escenas);
-        scenesRef.current = escenas;
-        if (import.meta.env.VITE_EXPOSE_MAP) window.__escenas = escenas;
-        map.on('click', (e) => { if (escenas.pick(e.point)) e.originalEvent.__sceneHit = true; });
+        // el clic sobre un elemento de la escena tiene prioridad sobre la selección del departamento
+        map.on('click', (e) => { if (scenesRef.current?.pick(e.point)) e.originalEvent.__sceneHit = true; });
         const reportLevel = () => {
           const lv = levelOf(map.getZoom());
           if (lv !== levelRef.current) { levelRef.current = lv; latest.current.onLevel?.(lv); }
         };
         map.on('zoom', reportLevel); reportLevel();
+
+        // escenas productivas 3D (misma cámara y terreno que el mapa); three.js se descarga aparte, sin demorar el mapa
+        import('./components/Map3D/SceneManager').then(({ createEscenasLayer }) => {
+          if (mapRef.current !== map) return; // el mapa ya se desmontó
+          const escenas = createEscenasLayer({ onPick: (info) => latest.current.onScenePick?.(info) });
+          escenas.setGeometries(Object.fromEntries(gj.features.map((f) => [f.properties.deptId, f.geometry])));
+          escenas.setOptions(latest.current.scenes || {});
+          escenas.setFilter(latest.current.activeFilter);
+          escenas.setSelected(latest.current.selectedDeptId);
+          map.addLayer(escenas);
+          scenesRef.current = escenas;
+          if (import.meta.env.VITE_EXPOSE_MAP) window.__escenas = escenas;
+        }).catch((err) => console.error('No se pudieron cargar las escenas 3D:', err));
 
         markersRef.current = gj.features.map((f) => {
           const el = document.createElement('button');
@@ -359,25 +385,82 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Filtro sectorial: atenúa los departamentos fuera del sector ---
+  // --- Aspecto de los departamentos: filtro sectorial, grupo resaltado, foco e intensidad ---
+  const hlKey = JSON.stringify(highlightIds), fcKey = JSON.stringify(focusIds), inKey = JSON.stringify(intensity);
   useEffect(() => {
     const map = mapRef.current;
     const apply = () => {
+      const hl = highlightIds ? new Set(highlightIds) : null, fc = new Set(focusIds || []);
       featuresRef.current.forEach((f) => {
-        map.setFeatureState(
-          { source: 'deptos', id: f.properties.deptId },
-          { dimmed: activeFilter !== 'todos' && f.properties.sector !== activeFilter }
-        );
+        const id = f.properties.deptId;
+        const mismatch = activeFilter !== 'todos' && f.properties.sector !== activeFilter;
+        const iv = intensity ? intensity[id] : null;
+        map.setFeatureState({ source: 'deptos', id }, { dimmed: mismatch || !!(hl && !hl.has(id)), focus: fc.has(id), useIntensity: iv != null, intensity: iv ?? 0 });
       });
-    };
-    const applyAll = () => {
       scenesRef.current?.setFilter(activeFilter);
-      apply();
-      markersRef.current.forEach((m) => m.el.classList.toggle('is-dim', activeFilter !== 'todos' && m.sector !== activeFilter));
+      markersRef.current.forEach((m) => m.el.classList.toggle('is-dim', (activeFilter !== 'todos' && m.sector !== activeFilter) || !!(hl && !hl.has(m.id))));
+      refreshTerrainTextures(map);
     };
-    if (readyRef.current) applyAll();
-    else map.once('jujuy-ready', applyAll);
-  }, [activeFilter]);
+    if (readyRef.current) apply();
+    else map.once('jujuy-ready', apply);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilter, hlKey, fcKey, inKey]);
+
+  // --- Diseño (explorar / historia): el mapa es el mismo, cambia el marco que lo rodea ---
+  useEffect(() => {
+    if (containerRef.current) containerRef.current.dataset.layout = layout;
+    mapRef.current?.resize();
+  }, [layout]);
+
+  // --- En la historia el mapa no captura la rueda ni el arrastre (así el scroll recorre la narrativa) ---
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    [map.scrollZoom, map.dragPan, map.dragRotate, map.touchZoomRotate, map.touchPitch, map.doubleClickZoom, map.keyboard, map.boxZoom]
+      .forEach((h) => h && (interactive ? h.enable() : h.disable()));
+  }, [interactive]);
+
+  // --- Puntos de interés (sólo con coordenadas aportadas/verificadas) ---
+  const poiKey = JSON.stringify(pois);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !pois?.length) return undefined;
+    const created = pois.map((p) => {
+      const el = document.createElement('div');
+      el.className = 'poi-marker';
+      el.setAttribute('role', 'img');
+      el.setAttribute('aria-label', p.label);
+      [['poi-pulse', ''], ['poi-dot', ''], ['poi-label', p.label]].forEach(([cls, txt]) => { const sp = document.createElement('span'); sp.className = cls; sp.textContent = txt; el.appendChild(sp); });
+      return new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(p.lngLat).addTo(map);
+    });
+    return () => created.forEach((m) => m.remove());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poiKey]);
+
+  // --- Cámara dirigida por la historia (un solo mapa, sin segunda instancia) ---
+  useImperativeHandle(ref, () => ({
+    resize: () => mapRef.current?.resize(),
+    getMap: () => mapRef.current,
+    applyCamera(spec) {
+      const map = mapRef.current;
+      if (!map || !spec) return false;
+      if (!readyRef.current) { pendingCamera.current = spec; map.once('jujuy-ready', () => { const sp = pendingCamera.current; pendingCamera.current = null; if (sp) this.applyCamera(sp); }); return false; }
+      const duration = latest.current.reducedMotion ? 0 : (spec.duration ?? 2200);
+      map.stop(); // cancela el vuelo anterior si el usuario recorre los capítulos rápido
+      if (spec.type === 'point') {
+        map.easeTo({ center: spec.lngLat, zoom: spec.zoom, pitch: spec.pitch ?? 58, bearing: spec.bearing ?? -10, duration, essential: true });
+      } else {
+        const bounds = new maplibregl.LngLatBounds();
+        const extend = (c) => (typeof c[0] === 'number' ? bounds.extend(c) : c.forEach(extend));
+        if (spec.type === 'province') { bounds.extend(provinceBounds[0]); bounds.extend(provinceBounds[1]); }
+        else featuresRef.current.filter((f) => spec.ids.includes(f.properties.deptId)).forEach((f) => extend(f.geometry.coordinates));
+        if (bounds.isEmpty()) return false;
+        map.fitBounds(bounds, { padding: framePad(map), pitch: spec.pitch ?? 52, bearing: spec.bearing ?? -8, duration, maxZoom: spec.maxZoom ?? 11, essential: true });
+      }
+      if (import.meta.env.VITE_EXPOSE_MAP) window.__cameraCalls = (window.__cameraCalls || 0) + 1;
+      return true;
+    }
+  }), []);
 
   // --- Opciones de las escenas (personas, vehículos, instalaciones, animaciones) ---
   useEffect(() => { scenesRef.current?.setOptions(scenes || {}); }, [scenes]);
@@ -411,6 +494,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       }
       markersRef.current.forEach((m) => m.el.classList.toggle('is-selected', m.id === selectedDeptId));
       scenesRef.current?.setSelected(selectedDeptId);
+      refreshTerrainTextures(map);
       prevSelected.current = selectedDeptId;
     };
     if (readyRef.current) apply();
@@ -433,4 +517,6 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
       )}
     </div>
   );
-}
+});
+
+export default MapaJujuy;

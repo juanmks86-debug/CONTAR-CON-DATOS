@@ -12,3 +12,11 @@ button:focus-visible { outline: 2px solid #5eead4; outline-offset: 2px; }
 .dept-label { background: transparent; border: 0; padding: 2px 4px; pointer-events: none; /* los clics pasan al mapa: seleccionan el departamento o un elemento de la escena */ white-space: nowrap; color: #e8fbfa; font-size: 11px; font-weight: 600; text-shadow: 0 0 3px #020617, 0 0 6px #020617, 0 0 10px #020617; transition: opacity .2s; }
 .dept-label.is-dim { opacity: .25; }
 .dept-label.is-selected { color: #fff; font-size: 13px; }
+
+/* punto de interés (sólo con coordenadas aportadas/verificadas) */
+.poi-marker { position: relative; pointer-events: none; display: flex; align-items: center; justify-content: center; }
+.poi-dot { width: 12px; height: 12px; border-radius: 9999px; background: #fcd34d; border: 2px solid #0b1220; box-shadow: 0 0 0 2px #fcd34d99; }
+.poi-pulse { position: absolute; width: 12px; height: 12px; border-radius: 9999px; background: #fcd34d; opacity: .55; animation: poi-pulse 2.2s ease-out infinite; }
+.poi-label { position: absolute; top: 16px; white-space: nowrap; color: #fef3c7; font-size: 11px; font-weight: 600; text-shadow: 0 0 3px #020617, 0 0 8px #020617; }
+@keyframes poi-pulse { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(4.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .poi-pulse { animation: none; opacity: 0; } .dept-label { transition: none; } }

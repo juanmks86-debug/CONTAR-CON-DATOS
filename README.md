@@ -28,12 +28,20 @@ tests/e2e/                          prueba de extremo a extremo en navegador (op
 public/data/jujuy-departamentos.geojson   límites oficiales (IGN)
 ```
 
+## Historia (storytelling) y modo exploración
+Al abrir el sitio se ve **Historia**: un recorrido de 7 capítulos donde el scroll dirige el mismo mapa 3D (un solo mapa para los dos modos). El botón «Explorar datos» (o el selector del encabezado) abre la interfaz de exploración libre; `#explorar` y `#historia` en la URL eligen el modo.
+- Capítulos como datos: `src/story/storyData.js` (textos, departamentos resaltados, cámara, indicadores). Para editar un capítulo no hace falta tocar el motor.
+- Cada indicador declara ámbito (**provincial** o **departamental**, nunca mezclados), unidad, año, condición y fuente; lo que no existe dice «Información no disponible».
+- Capítulo 3: la escena solar es **ilustrativa**, ubicada en las coordenadas de Cauchari aportadas por el proyecto (`src/config/places.js`), pendientes de verificación con fuente oficial.
+- Respeta `prefers-reduced-motion` (cámara sin vuelos animados, sin pulsos) y funciona en celular (mapa fijo arriba, narrativa debajo).
+- **Fotografías:** Supabase Storage. Guía en `docs/FOTOGRAFIAS.md` y script en `supabase/storytelling_media.sql`. Sin fotografías se muestran imágenes de referencia provisionales rotuladas.
+- **Música:** copiá un archivo de audio en `src/assets/audio/` (ver el `LEEME.md` de esa carpeta). Sin archivo muestra «Música pendiente». No empieza sola.
+
 ## Escenas 3D: reglas
 - **Un solo motor** para los 16 departamentos. Cada departamento aporta configuración, no código 3D.
 - Las escenas son **ilustrativas**: no son establecimientos reales ni representan cantidades de trabajadores, producción o empleo.
 - **Sólo está activa la escena de Susques (minería)**, heredada del piloto original (`piloto: true`). Las otras escenas están definidas pero **desactivadas**.
 - Una actividad se activa únicamente si tiene `validada: true` **y** al menos una fuente en `fuentes` (ver `departmentsConfig.js`). No hay otra forma de encenderla.
-- **Vista previa ilustrativa** (interruptor en la barra inferior del mapa, apagado por defecto): dibuja también las escenas aún no validadas, con un aviso permanente y el rótulo «Vista previa · escena no validada» en la ficha de cada elemento. No activa ninguna escena: sólo las muestra.
 - No se cargan simultáneamente las escenas: se construyen al verse y se descargan tras 20 s fuera de cámara. Las geometrías se comparten entre escenas.
 
 ### Activar la escena de un departamento
@@ -51,12 +59,9 @@ public/data/jujuy-departamentos.geojson   límites oficiales (IGN)
 ## Pruebas
 - `npm run test:regresion`: el motor modular dibuja y selecciona exactamente igual que el piloto original de Susques.
 - `npm run test:descarga`: las escenas lejanas se descargan y se reconstruyen.
-- `npm run test:vista-previa`: las 25 escenas se construyen y dibujan, anclas dentro de su departamento y descarte por cámara correcto.
+- `npm run test:historia`: capítulos, grupos de departamentos e indicadores (ámbito, unidad, «no disponible»).
 - `npm run test:cpu`: costo de CPU del motor por cuadro.
-- `tests/e2e/`: ver `tests/e2e/LEEME.md`.
+- `tests/e2e/` y `tests/e2e/historia/`: pruebas en navegador (ver sus LEEME.md).
 
 ## Modelos 3D pendientes
 El piloto usa figuras procedurales animadas. Los modelos GLB/GLTF faltantes están listados en `MODELOS_REQUERIDOS` (`activitiesConfig.js`), carpeta prevista `public/models/`.
-
-## Nota sobre MapLibre 4.7.1 (relieve)
-Tras `easeTo`/`fitBounds`/`flyTo` con relieve, esta versión deja `_elevationFreeze` en `true` y la altura del terreno bajo el centro de la cámara deja de seguirse hasta el primer gesto manual (el encuadre queda corrido y las escenas 3D se ven desplazadas). `MapaJujuy.jsx` lo libera al terminar cada movimiento (`unfreezeElevation`, usa un campo interno con verificación de tipo). Si actualizás MapLibre, revisá si sigue siendo necesario.

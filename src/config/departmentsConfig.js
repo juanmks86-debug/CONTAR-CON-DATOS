@@ -8,6 +8,7 @@
 // `zoom: [instalaciones, personas, detalle]` sobrescribe los niveles por defecto (8, 10, 12).
 // Los indicadores económicos del panel salen de src/data.js (mismo id de departamento).
 
+import { CAUCHARI } from './places';
 import { TEMPLATES } from './activitiesConfig';
 
 const sector = (tipo) => ({ mineria: 'mineril', solar: 'mineril', azucarera: 'agro', agricultura: 'agro', ganaderia: 'agro', turismo: 'turismo', comercio: 'servicios', metalurgica: 'servicios' }[tipo]);
@@ -17,7 +18,7 @@ const a = (tipo, label, params, extra = {}) => ({ tipo, label, params, sector: s
 const activa = (act, fuentesDepto = []) => act.piloto || (act.validada && [...fuentesDepto, ...act.fuentes].length > 0);
 
 export const DEPARTMENTS_CONFIG = [
-  { id: 'susques', nombre: 'Susques', actividades: [a('mineria', 'Minería de litio: extracción y procesamiento', undefined, { piloto: true }), a('solar', 'Energía solar')] },
+  { id: 'susques', nombre: 'Susques', actividades: [a('mineria', 'Minería de litio: extracción y procesamiento', undefined, { piloto: true }), a('solar', 'Energía solar', undefined, { anchor: CAUCHARI.lngLat, anchorFuente: CAUCHARI.fuente })] },
   { id: 'cochinoca', nombre: 'Cochinoca', actividades: [a('mineria', 'Minería de litio (salares)'), a('comercio', 'Comercio y logística')] },
   { id: 'rinconada', nombre: 'Rinconada', actividades: [a('mineria', 'Minería polimetálica y proyectos de litio')] },
   { id: 'santa_catalina', nombre: 'Santa Catalina', actividades: [a('ganaderia', 'Ganadería camélida')] },
@@ -39,7 +40,7 @@ export const DEPARTMENTS_CONFIG = [
 export const SCENE_DEFS = DEPARTMENTS_CONFIG.flatMap((d) =>
   d.actividades.map((act, index) => ({
     id: `${d.id}-${act.tipo}-${index}`, deptId: d.id, sector: act.sector, actividad: act.label,
-    validada: act.validada, activa: activa(act, d.fuentes), fuentes: [...d.fuentes, ...act.fuentes], zoom: d.zoom, anchor: d.anchor, index, count: d.actividades.length,
+    validada: act.validada, activa: activa(act, d.fuentes), fuentes: [...d.fuentes, ...act.fuentes], zoom: d.zoom, anchor: act.anchor || d.anchor, anchorFuente: act.anchorFuente, index, count: d.actividades.length,
     ...TEMPLATES[act.tipo](act.params)
   }))
 );

@@ -1,24 +1,22 @@
-# Informe: refactorización modular, vista previa de escenas y metadatos de datos
+# Informe del proyecto: motor modular, vista previa de escenas, metadatos de datos e historia (storytelling)
 
-## 1. Qué cambió respecto de tu repositorio
-| Tipo | Archivos |
-|---|---|
-| Modificados | README.md, package.json (scripts), src/App.jsx, src/geo.js, src/index.css (1 línea), src/MapaJujuy.jsx (importación, liberación de la elevación del relieve y 2 líneas que sólo actúan en compilaciones de prueba) |
-| Agregados | src/components/Map3D/ (6 módulos), src/config/ (2), src/data/ (indicators.js, sources.js), scripts/check-data.mjs, tests/ |
-| Eliminados | src/escenas3d.js y src/escenasData.js (reemplazados por el motor modular; copias en tests/regresion/original/) |
-| Sin cambios | src/data.js, public/data/jujuy-departamentos.geojson, PENDIENTES_TECNICOS.md |
+## 1. Qué hay ahora
+- **Modo Historia** (por defecto): 7 capítulos donde el scroll dirige el mismo mapa 3D. **Modo Explorar datos**: la interfaz anterior. Un solo mapa para los dos (no se desmonta al cambiar).
+- **Motor 3D modular** (src/components/Map3D) con 25 escenas definidas en los 16 departamentos; sólo Susques-minería está activa. Interruptor «Vista previa ilustrativa» (apagado por defecto) para ver las demás, rotuladas como no validadas.
+- **Metadatos de indicadores** (unidad, escala, año, condición, fuente) y conciliación provincial vs. departamental.
+- **Fotografías** desde Supabase Storage (script SQL + guía en docs/FOTOGRAFIAS.md) con imágenes de referencia provisionales rotuladas. **Música** local pendiente de archivo (src/assets/audio/).
 
-Se conservan: mapa MapLibre, relieve, motor three.js (capa personalizada), animaciones de personas y vehículos, rotación, zoom y selección departamental.
+## 2. Decisiones del proyecto aplicadas
+- Capítulo 3: foco en Cauchari con las coordenadas aportadas por el proyecto (-24.10169, -66.71382), que caen dentro del polígono de Susques. Siguen **pendientes de verificación con fuente oficial**. La escena solar es ilustrativa; no hay indicadores de capacidad (Información no disponible).
+- Capítulo 5: turismo (4 departamentos) + Palpalá; Belgrano no.
+- Música: pendiente; se adjunta un archivo en src/assets/audio/. El proyecto no incluye ni descarga ninguna pista (revisar derechos de uso).
+- Supabase: script SQL en supabase/storytelling_media.sql.
 
-## 2. Susques idéntico
-El borrador modular previo NO era fiel (otro circuito de camiones, chimenea distinta y seleccionable, escena solar activa). Se corrigió y se verificó con `npm run test:regresion`: en 10 cuadros las instancias dibujadas (posición, tamaño, color, opacidad) y la selección con el mouse son idénticas al piloto original (107 instancias en nivel 4). Limitación: la regresión usa un mapa simulado en Node, no compara píxeles en navegador.
-
-## 3. Escenas por departamento y vista previa
-Hay **25 escenas definidas en los 16 departamentos** (plantas de procesamiento, plantas azucareras, nave industrial en Palpalá, galpones, establecimientos hoteleros, comercio y servicios). **Sólo Susques-minería está activa** (`piloto: true`); una actividad sólo se activa con `validada: true` y al menos una fuente.
-El interruptor **«Vista previa ilustrativa»** (apagado por defecto) dibuja también las no validadas, con aviso permanente y el rótulo «Vista previa · escena no validada» en la ficha. Las plantillas son genéricas: ninguna corresponde a un establecimiento real.
+## 3. Susques idéntico al piloto
+`npm run test:regresion`: en 10 cuadros las instancias dibujadas y la selección con el mouse son idénticas al piloto original (107 instancias en nivel 4), con las 16 geometrías cargadas y sólo Susques-minería dibujada. Limitación: usa un mapa simulado en Node.
 
 ## 4. Datos e indicadores
-135 indicadores (7 provinciales, 128 departamentales) con unidad, escala, año, condición y fuente. **Ninguno está validado**: desde el entorno de desarrollo no hubo acceso a DPEC, INDEC, SIACAM ni a las demás fuentes, y no se cargaron valores ni URLs sin confirmar. 2026 se marca parcial (año en curso).
+135 indicadores (7 provinciales, 128 departamentales). **Ninguno está validado**: desde el entorno de desarrollo no hubo acceso a DPEC, INDEC, SIACAM ni a las demás fuentes, y no se cargaron valores ni URLs sin confirmar. Los datos de 2026 son parciales (año en curso). En la historia, todo indicador declara ámbito (provincial o departamental, nunca mezclados), unidad, año, condición y fuente; lo que no existe dice «Información no disponible» (población, proyectos e inversiones, capacidad solar instalada, visitantes).
 
 ### Conciliación provincial vs. suma departamental (salida de `npm run check:data`)
 ```
@@ -52,31 +50,39 @@ CONCILIACIÓN provincial vs suma de los 16 departamentos
   Participación en el PBI            2026  prov=   100  suma= 145.4  dif= -45.4  NO CONCILIA
 Crecimiento de empleo declarado vs calculado: NO coincide en santa_catalina (45% vs 47.6%), cochinoca (75% vs 76%), valle_grande (35% vs 36%)
 ```
-Origen: los totales provinciales son literales escritos a mano en el App.jsx original (el comentario decía "aggregated", pero no se calculaban). La diferencia de empleo cambia de signo según el año, por lo que no se explica por "empleo no asignado". No se corrigió ningún valor.
+Origen: los totales provinciales son literales escritos a mano en el App.jsx original (el comentario decía "aggregated", pero no se calculaban). La diferencia de empleo cambia de signo según el año, por lo que no se explica por "empleo no asignado". No se corrigió ningún valor; el capítulo 6 lo advierte.
 
 ## 5. Errores encontrados y corregidos durante las pruebas
-1. **MapLibre 4.7.1 y la elevación del centro.** Tras easeTo/fitBounds/flyTo con relieve (incluido el encuadre inicial) queda `_elevationFreeze = true` y la altura del terreno bajo el centro de la cámara no se sigue hasta el primer gesto manual: el encuadre queda corrido y las escenas se ven desplazadas (el ancla llegó a caer fuera de pantalla). Se libera al terminar cada movimiento. Usa un campo interno de MapLibre con verificación de tipo; revisar si se actualiza la librería. Afectaba también a la app original.
-2. **Descarte por cámara.** Las escenas no construidas se descartaban según el centroide del departamento y no su propia ancla; una segunda escena lejana podía no aparecer nunca. Hay una prueba que falla sin la corrección.
-3. **Etiquetas de departamento** que interceptaban los clics sobre la escena (ahora el clic llega al mapa).
-4. La altura del ancla se muestrea en cada cuadro (MapLibre la entrega relativa al centro de la pantalla).
+1. **El mapa no repintaba los cambios de estado con relieve (MapLibre 4.7.1).** Con terreno 3D, los polígonos se dibujan en texturas por baldosa en caché que no se invalidan al cambiar el feature-state (resalte, atenuación, intensidad): en el capítulo 6 los píxeles eran idénticos a los del 5. Afectaba también al filtro por sector de la app original. Se invalidan a mano tras cada cambio. Verificado midiendo el color real de los píxeles.
+2. **Elevación del centro congelada tras vuelos de cámara (MapLibre 4.7.1):** el encuadre quedaba corrido y las escenas 3D desplazadas hasta el primer gesto manual. Se libera al terminar cada movimiento. Esto además hizo desaparecer la limitación anterior sobre saltos bruscos de cámara en blanco (verificado con tres saltos).
+3. Descarte por cámara de escenas aún no construidas usaba el centroide del departamento y no el ancla de la escena.
+4. Etiquetas de departamento que interceptaban los clics sobre la escena.
+5. Celular: el encabezado desbordaba a 390 px y ensanchaba toda la página.
+6. Un 404 en consola (archivo de lista de música inexistente y favicon): la música se detecta ahora al compilar y no hace pedidos de red.
+7. Capítulo 3: la escena minera aparecía diminuta al fondo; ahora sólo se dibuja la solar.
+8. Reproductor y etiquetas tapaban la atribución del mapa.
+
+Los puntos 1 y 2 dependen de campos internos de MapLibre 4.7.1 (`_elevationFreeze`, `tile.rtt`), usados con verificación de tipo: revisar si se actualiza la librería.
 
 ## 6. Pruebas
-**Node:** regresión de Susques, vista previa (25 escenas, anclas, descarte), descarga de escenas lejanas y CPU: todas pasan.
-**Navegador real** (Chromium sin interfaz, WebGL por software, teselas simuladas, sin internet):
-- Versión final: filtros, cambio Susques → Tilcara → Susques, reaparición de la escena, memoria y consola: 18/18. Cinco departamentos con dos escenas (vista previa): 25/25. Suite base hasta rotación: 26/26 en una corrida previa que se cortó.
-- Antes de las correcciones 1 y 2, los 16 departamentos pasaron salvo la segunda escena de Ledesma (error 2). Los 16 se revisaron visualmente en capturas.
-- No se vieron errores de JavaScript ni avisos de la aplicación.
+**Node** (instalación limpia): regresión de Susques, vista previa (25 escenas), descarga de escenas, CPU, datos de la historia (grupos, ámbito, «no disponible»), `check:data`.
+**Navegador real** (Chromium sin interfaz, WebGL por software, teselas simuladas, sin internet), sobre la versión final:
+- Historia: 102 comprobaciones aprobadas — render por píxeles (6), escritorio (62: diseño, mapa fijo, rueda, 7 capítulos con resalte/foco/cámara, Cauchari, sin animaciones repetidas, reversibilidad, indicadores, cambio de modo con el mismo mapa), celular 390×844 (11), movimiento reducido (7) y Supabase simulado + música local (16).
+- Explorar datos: 18/18 (filtros, cambio de departamento, reaparición de la escena, memoria, rendimiento, consola) y 15 comprobaciones sin fallos de la vista previa por departamento (cortada por el entorno; antes del cambio de estructura había pasado 25/25).
+- Revisión visual de capturas de escritorio y celular.
 
 ### Rendimiento: lo medido y lo no medido
-- CPU de JavaScript del motor: 0,02 ms por cuadro con una escena y 0,46 ms con las 25 a la vez (Node, peor caso).
-- En el navegador de prueba (GPU emulada por software) la escena agrega ~7 ms por cuadro de dibujo y todo el mapa corre a ~2 cuadros/s: es el emulador. **El rendimiento en una GPU real NO fue medido.** Para medirlo: Chrome → F12 → Rendimiento → grabar 10 s con la escena de Susques en nivel 4.
+- CPU de JavaScript del motor: ~0,01 ms por cuadro con una escena y ~0,25 ms con las 25 a la vez (Node).
+- El código de three.js y de Supabase se descarga aparte: el archivo principal bajó de 1,49 MB a 1,05 MB (298 KB comprimido).
+- **El rendimiento en una GPU real NO fue medido** (el emulador por software corre el mapa a ~2 cuadros/s). Para medirlo: Chrome → F12 → Rendimiento → grabar 10 s recorriendo la historia.
 
 ## 7. Limitaciones
+- **Supabase:** probado contra un servidor simulado; el script SQL se validó sintácticamente con el analizador de PostgreSQL pero **no se ejecutó en un proyecto real**. Las fotografías reales y la conexión las verificás vos.
+- **Música:** sin archivo (pendiente). El enlace a YouTube de respaldo no pudo verificarse desde el entorno.
 - Imagen satelital real (Esri) y relieve real (AWS) no se probaron; se simularon. Revisá las condiciones de uso de Esri.
 - No se probó en Windows ni en tu hardware.
-- Personas y vehículos son figuras procedurales: faltan los modelos GLB/GLTF (`MODELOS_REQUERIDOS`, carpeta prevista public/models/).
-- Los datos económicos siguen siendo ilustrativos.
-- Un salto brusco programático de cámara (`jumpTo`) con el relieve exagerado puede dejar MapLibre en blanco; no ocurre con rueda, arrastre ni vuelos animados.
+- Personas y vehículos son figuras procedurales: faltan los modelos GLB/GLTF (`MODELOS_REQUERIDOS`).
+- Los datos económicos siguen siendo ilustrativos; las coordenadas de Cauchari son las aportadas por el proyecto.
 
 ## 8. Siguiente paso
-Descargar las series oficiales, cargarlas en src/data/indicators.js (fuente completa, condición por punto, validacion: 'validado') y recién entonces validar actividades y activarlas.
+Cargar fotografías reales (docs/FOTOGRAFIAS.md), agregar el audio, y descargar las series oficiales para cargarlas en src/data/indicators.js con su fuente completa.

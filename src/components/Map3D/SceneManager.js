@@ -56,7 +56,7 @@ export function createEscenasLayer({ onPick }) {
   }
 
   // `preview` (apagado por defecto) dibuja también las escenas ilustrativas aún no validadas
-  const active = () => SCENE_DEFS.filter((d) => (d.activa || st.opts.preview) && st.geoms[d.deptId]
+  const active = () => SCENE_DEFS.filter((d) => (d.activa || st.opts.preview || st.opts.previewIds?.includes(d.id)) && st.geoms[d.deptId] && (!st.opts.onlyIds || st.opts.onlyIds.includes(d.id))
     && (st.filter === 'todos' || st.filter === group(d.sector)) && (!st.selected || st.selected === d.deptId));
 
   const layer = {
