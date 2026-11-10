@@ -10,6 +10,7 @@ import { disposeGeometries } from './utils';
 import { buildInstallations, layoutInstallations, installationPicks } from './InstallationManager';
 import { buildVehicles, updateVehicles } from './VehicleManager';
 import { buildCharacters, updateCharacters } from './CharacterManager';
+import { createCondorFlight } from './CondorFlight';
 
 export { levelOf };
 const UNLOAD_S = 20;
@@ -18,7 +19,8 @@ const disposeRt = (rt) => rt.scene.traverse((o) => { o.material?.dispose?.(); o.
 const group = (sector) => (sector === 'servicios' ? 'turismo' : sector); // "Turismo y servicios" comparten filtro
 
 export function createEscenasLayer({ onPick }) {
-  const st = { opts: { people: true, vehicles: true, facilities: true, animate: true, preview: false }, filter: 'todos', selected: null, geoms: {} };
+  const st = { opts: { people: true, vehicles: true, facilities: true, condor: true, animate: true, preview: false }, filter: 'todos', selected: null, geoms: {} };
+  const condor = createCondorFlight({ onPick });
   const rts = new Map(), anchors = {};
   let map, renderer, camera, lastActive = [];
 
@@ -65,6 +67,7 @@ export function createEscenasLayer({ onPick }) {
       map = m; camera = new THREE.Camera();
       renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
       renderer.autoClear = false;
+      condor.init(m);
     },
     render(gl, arg) {
       const matrix = arg?.defaultProjectionData?.mainMatrix ?? arg;
@@ -73,11 +76,21 @@ export function createEscenasLayer({ onPick }) {
       const now = performance.now() / 1000;
       // memoria: se descartan las escenas que no se ven hace más de UNLOAD_S segundos
       rts.forEach((r, id) => { if (now - r.lastSeen > UNLOAD_S) { disposeRt(r); rts.delete(id); } });
-      if (z < LEVEL_ZOOM[0] - 0.3) return;
-      const lv = levelOf(z), s = sceneScale(z), t = performance.now() / 1000;
-      const W = map.getCanvas().clientWidth, H = map.getCanvas().clientHeight;
       let moving = false;
       renderer.resetState();
+
+      // Vuelo del Cóndor Andino sobre la Quebrada (Jujuy -> Purmamarca): activo en todos los niveles de zoom
+      if (st.opts.condor !== false) {
+        condor.renderCondorFlight(renderer, camera, matrix, map);
+        moving = true;
+      }
+
+      if (z < LEVEL_ZOOM[0] - 0.3) {
+        if (moving) map.triggerRepaint();
+        return;
+      }
+      const lv = levelOf(z), s = sceneScale(z), t = performance.now() / 1000;
+      const W = map.getCanvas().clientWidth, H = map.getCanvas().clientHeight;
       for (const def of active()) {
         // punto de referencia del descarte por cámara: el ancla de ESTA escena (no el centroide del departamento)
         const rc = rts.get(def.id) ? [rts.get(def.id).lng0, rts.get(def.id).lat0] : anchorOf(def);
@@ -111,11 +124,21 @@ export function createEscenasLayer({ onPick }) {
       }
       if (moving) map.triggerRepaint();
     },
-    onRemove() { rts.forEach(disposeRt); rts.clear(); disposeGeometries(); renderer?.dispose(); }
+    onRemove() {
+      condor.disposeCondorFlight();
+      rts.forEach(disposeRt);
+      rts.clear();
+      disposeGeometries();
+      renderer?.dispose();
+    }
   };
 
   return Object.assign(layer, {
-    setOptions(o) { st.opts = { ...st.opts, ...o }; map?.triggerRepaint(); },
+    setOptions(o) {
+      st.opts = { ...st.opts, ...o };
+      condor.setEnabled(st.opts.condor !== false);
+      map?.triggerRepaint();
+    },
     setFilter(f) { st.filter = f; map?.triggerRepaint(); },
     setSelected(id) { st.selected = id; map?.triggerRepaint(); },
     setGeometries(g) { st.geoms = g; },
@@ -124,6 +147,7 @@ export function createEscenasLayer({ onPick }) {
     // selección por proximidad en pantalla (misma cámara del mapa)
     pick(pt) {
       if (!map) return false;
+      if (st.opts.condor !== false && condor.pick(pt)) return true;
       const W = map.getCanvas().clientWidth, H = map.getCanvas().clientHeight, v = new THREE.Vector4();
       let best = null, bd = 22;
       for (const rt of lastActive) for (const it of rt.pick) {

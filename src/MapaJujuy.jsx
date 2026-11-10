@@ -291,7 +291,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
           }
         });
 
-        // escenas productivas 3D (misma cámara y terreno que el mapa)
+        // escenas productivas 3D (misma cámara y terreno que el mapa, incluye el Cóndor Andino)
         const escenas = createEscenasLayer({ onPick: (info) => latest.current.onScenePick?.(info) });
         escenas.setGeometries(Object.fromEntries(gj.features.map((f) => [f.properties.deptId, f.geometry])));
         escenas.setOptions(latest.current.scenes || {});
@@ -379,7 +379,7 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
     else map.once('jujuy-ready', applyAll);
   }, [activeFilter]);
 
-  // --- Opciones de las escenas (personas, vehículos, instalaciones, animaciones) ---
+  // --- Opciones de las escenas (personas, vehículos, instalaciones, animaciones, cóndor) ---
   useEffect(() => { scenesRef.current?.setOptions(scenes || {}); }, [scenes]);
 
   // --- Vista 3D / 2D ---

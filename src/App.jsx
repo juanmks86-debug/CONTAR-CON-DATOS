@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, Mountain, X } from 'lucide-react';
+import { ArrowLeft, Mountain, X, Feather, Compass } from 'lucide-react';
 import MapaJujuy from './MapaJujuy';
 import { JUJUY_DEPARTMENTS_DATA } from './data';
 import { DEPARTMENTS_CONFIG } from './config/departmentsConfig';
@@ -10,14 +10,21 @@ const SECTORS = {
   turismo:   { label: 'Turismo y servicios', color: '#f59e0b' },
   servicios: { label: 'Servicios',           color: '#0ea5e9' }
 };
-const SCENE_TOGGLES = [['people', 'Personas'], ['vehicles', 'Vehículos'], ['facilities', 'Fábricas e instalaciones'], ['animate', 'Animaciones']];
+const SCENE_TOGGLES = [
+  ['people', 'Personas'],
+  ['vehicles', 'Vehículos'],
+  ['facilities', 'Fábricas e instalaciones'],
+  ['condor', 'Cóndor Andino'],
+  ['animate', 'Animaciones']
+];
 const glass = 'bg-[#07111d]/85 border border-white/12 backdrop-blur-md';
 
 export default function App() {
   const [selectedDeptId, setSelectedDeptId] = useState(null);
   const [activeFilter, setActiveFilter] = useState('todos');
   const [view3d, setView3d] = useState(true);
-  const [sceneOpts, setSceneOpts] = useState({ people: true, vehicles: true, facilities: true, animate: true, preview: true });
+  const [sceneOpts, setSceneOpts] = useState({ people: true, vehicles: true, facilities: true, condor: true, animate: true, preview: true });
+  const [pickedElement, setPickedElement] = useState(null);
 
   const mapDepartments = useMemo(() => JUJUY_DEPARTMENTS_DATA.map((d) => ({
     ...d, color: SECTORS[d.sector].color, sector: d.sector === 'servicios' ? 'turismo' : d.sector
@@ -29,8 +36,15 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen relative bg-[#050d17] text-slate-100 overflow-hidden">
-      <MapaJujuy departments={mapDepartments} selectedDeptId={selectedDeptId} activeFilter={activeFilter}
-        onSelect={setSelectedDeptId} view3d={view3d} scenes={sceneOpts} />
+      <MapaJujuy
+        departments={mapDepartments}
+        selectedDeptId={selectedDeptId}
+        activeFilter={activeFilter}
+        onSelect={setSelectedDeptId}
+        view3d={view3d}
+        scenes={sceneOpts}
+        onScenePick={setPickedElement}
+      />
 
       <header className={`${glass} absolute top-4 left-4 z-10 rounded-xl px-4 py-2.5 flex items-center gap-2 font-bold tracking-wide`}>
         <Mountain className="w-5 h-5 text-teal-300" /> <span>JUJUY <span className="text-teal-300">MAPA 3D</span></span>
@@ -58,6 +72,45 @@ export default function App() {
         ))}
         <button onClick={() => setActiveFilter('todos')} className="px-2.5 py-1 rounded-lg border border-white/15 text-slate-300 hover:bg-white/5">Todos</button>
       </div>
+
+      {/* Ficha informativa del Cóndor Andino u objeto 3D seleccionado */}
+      {pickedElement && (
+        <aside className={`${glass} absolute right-4 bottom-20 w-[320px] max-w-[calc(100%-2rem)] rounded-xl p-4 z-20 flex flex-col gap-2.5 shadow-2xl`}>
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="flex items-center gap-1.5 font-semibold text-amber-300">
+              <Feather className="w-4 h-4" /> Elemento 3D Interactivo
+            </span>
+            <button onClick={() => setPickedElement(null)} aria-label="Cerrar ficha" className="hover:text-white"><X className="w-4 h-4" /></button>
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white leading-tight">{pickedElement.elemento}</h3>
+            <p className="text-xs text-slate-300 mt-0.5">{pickedElement.actividad || pickedElement.tipo}</p>
+          </div>
+          {pickedElement.id === 'condor-andino' ? (
+            <div className="space-y-1.5 text-xs text-slate-300 bg-black/30 p-2.5 rounded-lg border border-white/10">
+              <div className="flex items-center gap-1.5 text-amber-200 font-medium">
+                <Compass className="w-3.5 h-3.5" /> Trayectoria Quebrada de Humahuaca
+              </div>
+              <p className="text-[11px] text-slate-400">
+                <strong>Origen:</strong> San Salvador de Jujuy (24°11′34″ S, 65°17′36″ O)<br />
+                <strong>Destino:</strong> Purmamarca (23°44′00″ S, 65°29′00″ O)
+              </p>
+              <div className="flex justify-between text-[11px] pt-1 border-t border-white/10">
+                <span>Altura sobre terreno:</span>
+                <span className="font-mono text-teal-300">{pickedElement.altura}</span>
+              </div>
+              <div className="flex justify-between text-[11px]">
+                <span>Coordenadas:</span>
+                <span className="font-mono text-slate-300">{pickedElement.coordenadas?.join(', ')}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-400">
+              <span>Departamento: <strong className="text-slate-200">{pickedElement.deptId}</strong></span>
+            </div>
+          )}
+        </aside>
+      )}
 
       {dept && (
         <aside className={`${glass} absolute right-4 top-4 w-[300px] max-w-[calc(100%-2rem)] rounded-xl p-4 z-10 flex flex-col gap-3`}>
