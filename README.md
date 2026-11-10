@@ -42,11 +42,8 @@ public/data/jujuy-departamentos.geojson   límites oficiales (IGN)
 3. Si hay coordenadas verificadas del establecimiento, cargar `anchor: [lng, lat]` (debe caer dentro del departamento).
 4. Revisar la escena en el mapa. Si falta un modelo propio, usar o crear una plantilla en `activitiesConfig.js`.
 
-## Datos e indicadores
-- Cada indicador declara **unidad, escala (departamental o provincial, nunca mezcladas), año y condición** (`observado`, `estimado` o `parcial`) y su **fuente** (`src/data/indicators.js`).
-- Los valores actuales **no tienen fuente verificada** (`validacion: 'sin_validar'`). El año 2026 es **parcial** (año en curso).
-- `npm run check:data` informa indicadores sin validar, la conciliación provincial vs. suma de departamentos y controles de coherencia (`-- --strict` falla si hay datos sin validar).
-- Para validar un indicador: cargar el valor real, completar `fuente`, fijar `condicion` en cada punto y poner `validacion: 'validado'`.
+## Datos
+El proyecto no incluye datos numéricos ni gráficos: solo el mapa, las escenas 3D (personas, fábricas, vehículos).
 
 ## Pruebas
 - `npm run test:regresion`: el motor modular dibuja y selecciona exactamente igual que el piloto original de Susques.

@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { createEscenasLayer, levelOf } from './components/Map3D/SceneManager';
-import { CONDOR_COORDINATE } from './components/Map3D/CondorManager';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // GeoJSON real de los 16 departamentos de Jujuy (IGN/IDERA), en /public/data/
@@ -421,10 +420,6 @@ export default function MapaJujuy({ departments, selectedDeptId, activeFilter, o
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full rounded-xl overflow-hidden" />
-      {!loading && !error && <div className="absolute right-3 bottom-3 z-[2] pointer-events-none flex items-center gap-2 rounded-lg border border-pink-300/40 bg-[#061116]/85 px-3 py-2 text-[9px] uppercase tracking-wider text-teal-100 backdrop-blur-md">
-        <span className="h-2 w-2 shrink-0 rounded-full bg-pink-400 shadow-[0_0_12px_#ff4f9a]" />
-        <span><b className="block">Cóndor 3D · punto de vuelo</b><small className="mt-1 block text-amber-200">24° 11′ 34.1″ S · 65° 17′ 36.3″ O</small><small className="block text-slate-400">{CONDOR_COORDINATE.lat.toFixed(4)} S · {Math.abs(CONDOR_COORDINATE.lng).toFixed(4)} O</small></span>
-      </div>}
       {loading && (
         <div className="absolute inset-0 z-[3] flex items-center justify-center gap-2 text-xs text-teal-100 bg-[#061116]/80" role="status" aria-live="polite">
           <span className="w-3.5 h-3.5 border-2 border-teal-300/30 border-t-teal-300 rounded-full animate-spin" />

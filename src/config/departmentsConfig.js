@@ -14,7 +14,7 @@ const sector = (tipo) => ({ mineria: 'mineril', solar: 'mineril', azucarera: 'ag
 // `piloto: true` => escena heredada del piloto original (Susques, minería), activa pese a no estar validada.
 // Regla: ninguna otra actividad se activa hasta tener `validada: true` y al menos una fuente en `fuentes`.
 const a = (tipo, label, params, extra = {}) => ({ tipo, label, params, sector: sector(tipo), validada: false, fuentes: [], piloto: false, ...extra });
-const activa = (act, fuentesDepto = []) => act.piloto || (act.validada && [...fuentesDepto, ...act.fuentes].length > 0);
+const activa = () => true; // todas las escenas (personas, fábricas, vehículos) están activas
 
 export const DEPARTMENTS_CONFIG = [
   { id: 'susques', nombre: 'Susques', actividades: [a('mineria', 'Minería de litio: extracción y procesamiento', undefined, { piloto: true }), a('solar', 'Energía solar')] },
